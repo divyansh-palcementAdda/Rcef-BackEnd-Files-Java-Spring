@@ -11,17 +11,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.renaissance.app.exception.AccessDeniedException;
+import com.renaissance.app.mapper.UserMapper;
 import com.renaissance.app.model.Department;
 import com.renaissance.app.model.Role;
+import com.renaissance.app.model.TaskStatus;
 import com.renaissance.app.model.User;
 import com.renaissance.app.model.UserStatus;
 import com.renaissance.app.payload.UserDTO;
 import com.renaissance.app.payload.UserRequest;
 import com.renaissance.app.repository.DepartmentRepository;
 import com.renaissance.app.repository.IUserRepository;
+import com.renaissance.app.repository.TaskRepository;
 import com.renaissance.app.security.UserSecurityUtil;
 import com.renaissance.app.service.interfaces.IUserService;
-import com.renaissance.app.mapper.UserMapper;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -35,14 +37,16 @@ public class UserServiceImpl implements IUserService {
 	private final PasswordEncoder passwordEncoder;
 	private final UserSecurityUtil securityUtil;
 	private final UserMapper userMapper;
+	private final TaskRepository taskRepository;
 
 	public UserServiceImpl(IUserRepository userRepository, DepartmentRepository departmentRepository,
-			PasswordEncoder passwordEncoder, UserSecurityUtil securityUtil, UserMapper userMapper) {
+			PasswordEncoder passwordEncoder, UserSecurityUtil securityUtil, UserMapper userMapper,TaskRepository taskRepository) {
 		this.userRepository = userRepository;
 		this.departmentRepository = departmentRepository;
 		this.passwordEncoder = passwordEncoder;
 		this.securityUtil = securityUtil;
 		this.userMapper = userMapper;
+		this.taskRepository=taskRepository;
 	}
 
 	// ---------------------
@@ -150,14 +154,25 @@ public class UserServiceImpl implements IUserService {
 	// ---------------------
 	@Override
 	public UserDTO getUserById(Long userId) throws AccessDeniedException {
-		if (userId == null)
-			throw new IllegalArgumentException("userId is required");
-		if (!canAccessUser(userId))
-			throw new AccessDeniedException("Unauthorized");
+	    if (userId == null)
+	        throw new IllegalArgumentException("userId is required");
+	    if (!canAccessUser(userId))
+	        throw new AccessDeniedException("Unauthorized");
 
-		User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
-		return userMapper.toDto(user);
+	    User user = userRepository.findById(userId)
+	            .orElseThrow(() -> new RuntimeException("User not found"));
+
+	    UserDTO userDTO = userMapper.toDto(user);
+
+	    // Fetch task counts by status
+	    userDTO.setPendingTasks(taskRepository.countByAssignedToAndStatus(user, TaskStatus.PENDING));
+	    userDTO.setUpcomingTasks(taskRepository.countByAssignedToAndStatus(user, TaskStatus.UPCOMING));
+	    userDTO.setDelayedTasks(taskRepository.countByAssignedToAndStatus(user, TaskStatus.DELAYED));
+	    userDTO.setClosedTasks(taskRepository.countByAssignedToAndStatus(user, TaskStatus.CLOSED));
+
+	    return userDTO;
 	}
+
 
 	// ---------------------
 	// Admin: all users

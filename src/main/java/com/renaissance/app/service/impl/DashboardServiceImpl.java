@@ -43,6 +43,7 @@ public class DashboardServiceImpl implements IDashboardService {
         Long activeUsers = null;
         Long totalUsers = null;
         Long totalDepartments = null;
+        Long selfTask =0L;
         
         if (role.equals("ADMIN")) {
             // 🔹 Task counts
@@ -53,11 +54,12 @@ public class DashboardServiceImpl implements IDashboardService {
             upcomingTask = taskRepository.countByStatus(TaskStatus.UPCOMING);
             rfc = taskRepository.countByStatus(TaskStatus.REQUEST_FOR_CLOSURE);
             rfe = taskRepository.countByStatus(TaskStatus.REQUEST_FOR_EXTENSION);
-
+            
             // 🔹 User counts
             activeUsers = userRepository.countByStatus(UserStatus.ACTIVE);
             totalUsers = userRepository.count();
-
+            //self task counts
+            selfTask = taskRepository.countByAssignedTo(user);
             // 🔹 Department counts
             totalDepartments = departmentRepository.count();
 //            activeDepartments = departmentRepository.countByActiveTrue();
@@ -104,6 +106,7 @@ public class DashboardServiceImpl implements IDashboardService {
                 .totalDepartments(totalDepartments)
                 .userName(username).email(user.getEmail())
 //                .activeDepartments(activeDepartments)
+                .selfTask(selfTask)
                 .loggedInRole(role)
                 .departmentName(user.getDepartment() != null ? user.getDepartment().getName() : null)
                 .build();

@@ -12,8 +12,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.renaissance.app.service.interfaces.IEmailService;
 import com.renaissance.app.service.interfaces.IOtpService;
-import com.renaissance.app.service.interfaces.IUserService;
-
 import jakarta.mail.MessagingException;
 
 @RestController
@@ -28,7 +26,6 @@ public class OtpController {
 	private IEmailService emailService;
 
 	@Autowired
-	private IUserService userService;
 	
 	@PostMapping("/send-otp")
 	public ResponseEntity<?> sendOtp(@RequestBody Map<String, String> request) {

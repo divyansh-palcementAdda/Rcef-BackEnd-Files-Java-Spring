@@ -13,7 +13,7 @@ import com.renaissance.app.model.User;
 @Repository
 public interface TaskRepository extends JpaRepository<Task, Long> {
 	List<Task> findByAssignedTo_UserId(Long userId);
-
+//	 int countByAssignedToIdAndStatus(Long assignedToId, TaskStatus status);
 	List<Task> findByDepartment_DepartmentId(Long departmentId);
 
 	List<Task> findByStatus(TaskStatus status);

@@ -25,6 +25,7 @@ public class DashboardDto {
 
     private Long activeUsers;       // visible only to Admin/HOD
     private Long totalUsers;        // visible only to Admin/HOD
+    private Long selfTask;
     private Long activeDepartments; // visible only to Admin
     private Long totalDepartments;  // visible only to Admin
 

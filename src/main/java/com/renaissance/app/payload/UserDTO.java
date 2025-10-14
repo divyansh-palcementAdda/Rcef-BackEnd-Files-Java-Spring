@@ -25,4 +25,9 @@ public class UserDTO {
 	private String departmentName;
 
 	private boolean emailVerified; // NEW
+	
+	 private Long pendingTasks;
+	    private Long upcomingTasks;
+	    private Long delayedTasks;
+	    private Long closedTasks;
 }
