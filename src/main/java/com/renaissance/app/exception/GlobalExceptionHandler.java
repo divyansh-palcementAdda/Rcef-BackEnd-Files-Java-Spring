@@ -3,11 +3,15 @@ package com.renaissance.app.exception;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.InvalidDataAccessApiUsageException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -18,126 +22,154 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 import jakarta.validation.ValidationException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-	@ExceptionHandler(EmailAlreadyExistException.class)
-	public ResponseEntity<Map<String, Object>> handleEmailAlreadyExistException(EmailAlreadyExistException ex) {
-		return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage());
-	}
-	
-	@ExceptionHandler(BadCredentialsException.class)
-	public ResponseEntity<Map<String, Object>> handleBadCredentialsException(BadCredentialsException ex) {
-		System.err.println(ex.getMessage());
-		return buildErrorResponse(HttpStatus.NOT_ACCEPTABLE, "Invalid Email or Password");
-	}
-	
-	@ExceptionHandler(ConstraintViolationException.class)
-	public ResponseEntity<Map<String, Object>> handleConstraintViolationException(ConstraintViolationException ex) {
-		return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage());
-	}
-	@ExceptionHandler(MissingServletRequestParameterException.class)
-	public ResponseEntity<Map<String, Object>> handleMissingServletRequestParameterException(MissingServletRequestParameterException ex) {
-		return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
-	}
-	@ExceptionHandler(ValidationException.class)
-	public ResponseEntity<Map<String, Object>> handleValidationException(ValidationException ex) {
-		return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
-	}
+    private static final Logger logger = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-	@ExceptionHandler(InvalidDataAccessApiUsageException.class)
-	public ResponseEntity<Map<String, Object>> handleInvalidDataAccessApiUsageException(
-			InvalidDataAccessApiUsageException ex) {
-		return buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid data access API usage.");
-	}
+    // Align response structure with TaskController
+    private Map<String, Object> buildErrorResponse(HttpStatus status, String message, Map<String, String> errors) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("success", false);
+        response.put("message", message);
+        response.put("timestamp", LocalDateTime.now());
+        response.put("status", status.value());
+        if (errors != null && !errors.isEmpty()) {
+            response.put("errors", errors);
+        }
+        return response;
+    }
 
-	@ExceptionHandler(UserNotFoundException.class)
-	public ResponseEntity<Map<String, Object>> handleUserNotFoundException(UserNotFoundException ex) {
-		return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
-	}
+    private Map<String, Object> buildErrorResponse(HttpStatus status, String message) {
+        return buildErrorResponse(status, message, null);
+    }
 
-	@ExceptionHandler(HttpRequestMethodNotSupportedException.class)
-	public ResponseEntity<Map<String, Object>> handleHttpRequestMethodNotSupportedException(
-			HttpRequestMethodNotSupportedException ex) {
-		return buildErrorResponse(HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage());
-	}
+    @ExceptionHandler(EmailAlreadyExistException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailAlreadyExistException(EmailAlreadyExistException ex) {
+        logger.warn("Email already exists: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage()), HttpStatus.CONFLICT);
+    }
 
-	@ExceptionHandler(HttpMessageNotReadableException.class)
-	public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
-		return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
-	}
-	
-	@ExceptionHandler(ResourcesNotFoundException.class)
-	public ResponseEntity<Map<String, Object>> handleResourceNotFoundException(ResourcesNotFoundException ex) {
-		return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
-	}
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<Map<String, Object>> handleBadCredentialsException(BadCredentialsException ex) {
+        logger.warn("Bad credentials: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid email or password"), HttpStatus.UNAUTHORIZED);
+    }
 
-	@ExceptionHandler(NoResourceFoundException.class)
-	public ResponseEntity<Map<String, Object>> handleNoResourceFoundException(NoResourceFoundException ex) {
-		return buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage());
-	}
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<Map<String, Object>> handleBadRequestException(BadRequestException ex) {
+        logger.warn("Bad request: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage()), HttpStatus.BAD_REQUEST);
+    }
 
-	@ExceptionHandler(IllegalArgumentException.class)
-	public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(IllegalArgumentException ex) {
-		return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
-	}
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<Map<String, Object>> handleConstraintViolationException(ConstraintViolationException ex) {
+        Map<String, String> errors = ex.getConstraintViolations().stream()
+                .collect(Collectors.toMap(
+                        violation -> violation.getPropertyPath().toString(),
+                        ConstraintViolation::getMessage,
+                        (existing, replacement) -> existing)); // Merge duplicate keys
+        logger.warn("Constraint violation: {}", errors);
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, "Validation failed", errors), HttpStatus.BAD_REQUEST);
+    }
 
-	@ExceptionHandler(MethodArgumentTypeMismatchException.class)
-	public ResponseEntity<Map<String, Object>> handleMethodArgumentTypeMismatchException(
-			MethodArgumentTypeMismatchException ex) {
-		Map<String, Object> response = new HashMap<>();
-		Map<String, String> errors = new HashMap<>();
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<Map<String, Object>> handleMissingServletRequestParameterException(MissingServletRequestParameterException ex) {
+        logger.warn("Missing request parameter: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage()), HttpStatus.BAD_REQUEST);
+    }
 
-		String field = ex.getName();
-		String value = String.valueOf(ex.getValue());
-		String expectedType = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown";
+    @ExceptionHandler(ValidationException.class)
+    public ResponseEntity<Map<String, Object>> handleValidationException(ValidationException ex) {
+        logger.warn("Validation error: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage()), HttpStatus.BAD_REQUEST);
+    }
 
-		errors.put(field, "Failed to convert value '" + value + "' to required type '" + expectedType + "'");
+    @ExceptionHandler(InvalidDataAccessApiUsageException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidDataAccessApiUsageException(InvalidDataAccessApiUsageException ex) {
+        logger.warn("Invalid data access API usage: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid data access API usage"), HttpStatus.BAD_REQUEST);
+    }
 
-		response.put("timestamp", LocalDateTime.now());
-		response.put("status", HttpStatus.BAD_REQUEST.value());
-		response.put("error", HttpStatus.BAD_REQUEST.getReasonPhrase());
-		response.put("message", "Type mismatch error");
-		response.put("errors", errors);
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleUserNotFoundException(UserNotFoundException ex) {
+        logger.warn("User not found: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()), HttpStatus.NOT_FOUND);
+    }
 
-		return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-	}
+    @ExceptionHandler(ResourcesNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleResourceNotFoundException(ResourcesNotFoundException ex) {
+        logger.warn("Resource not found: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()), HttpStatus.NOT_FOUND);
+    }
 
-	@ExceptionHandler(MethodArgumentNotValidException.class)
-	public ResponseEntity<Map<String, Object>> handleMethodArgumentNotValidException(
-			MethodArgumentNotValidException ex) {
-		Map<String, String> errors = new HashMap<>();
-		for (FieldError fieldError : ex.getBindingResult().getFieldErrors()) {
-			errors.put(fieldError.getField(), fieldError.getDefaultMessage());
-		}
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleNoResourceFoundException(NoResourceFoundException ex) {
+        logger.warn("No resource found: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.NOT_FOUND, ex.getMessage()), HttpStatus.NOT_FOUND);
+    }
 
-		Map<String, Object> response = new HashMap<>();
-		response.put("timestamp", LocalDateTime.now());
-		response.put("status", HttpStatus.BAD_REQUEST.value());
-		response.put("error", HttpStatus.BAD_REQUEST.getReasonPhrase());
-		response.put("message", "Validation failed");
-		response.put("errors", errors);
+    @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpRequestMethodNotSupportedException(HttpRequestMethodNotSupportedException ex) {
+        logger.warn("Method not supported: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.METHOD_NOT_ALLOWED, ex.getMessage()), HttpStatus.METHOD_NOT_ALLOWED);
+    }
 
-		return new ResponseEntity<>(response, HttpStatus.BAD_REQUEST);
-	}
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex) {
+        logger.warn("Invalid request body: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, "Invalid request body format"), HttpStatus.BAD_REQUEST);
+    }
 
-	@ExceptionHandler(Exception.class)
-	public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
-		return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred.");
-	}
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> handleIllegalArgumentException(IllegalArgumentException ex) {
+        logger.warn("Illegal argument: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage()), HttpStatus.BAD_REQUEST);
+    }
 
-	private ResponseEntity<Map<String, Object>> buildErrorResponse(HttpStatus status, String message) {
-		Map<String, Object> error = new HashMap<>();
-		error.put("timestamp", LocalDateTime.now());
-		error.put("status", status.value());
-		error.put("error", status.getReasonPhrase());
-		error.put("message", message);
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodArgumentTypeMismatchException(MethodArgumentTypeMismatchException ex) {
+        Map<String, String> errors = new HashMap<>();
+        String field = ex.getName();
+        String value = ex.getValue() != null ? ex.getValue().toString() : "null";
+        String expectedType = ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "unknown";
+        errors.put(field, String.format("Failed to convert value '%s' to required type '%s'", value, expectedType));
+        
+        logger.warn("Type mismatch: {}", errors);
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, "Type mismatch error", errors), HttpStatus.BAD_REQUEST);
+    }
 
-		return new ResponseEntity<>(error, status);
-	}
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleMethodArgumentNotValidException(MethodArgumentNotValidException ex) {
+        Map<String, String> errors = ex.getBindingResult().getFieldErrors().stream()
+                .collect(Collectors.toMap(
+                        FieldError::getField,
+                        fieldError -> fieldError.getDefaultMessage() != null ? fieldError.getDefaultMessage() : "Invalid value",
+                        (existing, replacement) -> existing)); // Merge duplicate keys
+        
+        logger.warn("Validation failed: {}", errors);
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.BAD_REQUEST, "Validation failed", errors), HttpStatus.BAD_REQUEST);
+    }
 
+    @ExceptionHandler(AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> handleAccessDeniedException(AccessDeniedException ex) {
+        logger.warn("Access denied: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.FORBIDDEN, "Access denied: You do not have permission to perform this action"), HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler(SecurityException.class)
+    public ResponseEntity<Map<String, Object>> handleSecurityException(SecurityException ex) {
+        logger.warn("Security violation: {}", ex.getMessage());
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.FORBIDDEN, ex.getMessage()), HttpStatus.FORBIDDEN);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
+        logger.error("Unexpected error occurred: {}", ex.getMessage(), ex);
+        return new ResponseEntity<>(buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred"), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
 }
-

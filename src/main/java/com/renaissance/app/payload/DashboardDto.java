@@ -22,6 +22,7 @@ public class DashboardDto {
     private Long upcomingTask;
     private Long requestForClosure;
     private Long requestForExtension;
+    private Long extendedTask;
 
     private Long activeUsers;       // visible only to Admin/HOD
     private Long totalUsers;        // visible only to Admin/HOD

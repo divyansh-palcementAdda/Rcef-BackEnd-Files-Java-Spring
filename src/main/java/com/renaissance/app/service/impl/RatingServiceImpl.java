@@ -4,11 +4,13 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.modelmapper.ModelMapper;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.renaissance.app.exception.BadRequestException;
+import com.renaissance.app.exception.ResourcesNotFoundException;
+import com.renaissance.app.mapper.RatingMapper;
 import com.renaissance.app.model.Department;
 import com.renaissance.app.model.Rating;
 import com.renaissance.app.model.Task;
@@ -21,33 +23,29 @@ import com.renaissance.app.repository.IUserRepository;
 import com.renaissance.app.repository.TaskRepository;
 import com.renaissance.app.service.interfaces.IRatingService;
 
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 @Service
 @Transactional
+@RequiredArgsConstructor
+@Slf4j
 public class RatingServiceImpl implements IRatingService {
 
     private final IRatingRepository ratingRepository;
     private final IUserRepository userRepository;
     private final DepartmentRepository departmentRepository;
     private final TaskRepository taskRepository;
-    private final ModelMapper modelMapper;
-
-    public RatingServiceImpl(IRatingRepository ratingRepository,
-                             IUserRepository userRepository,
-                             DepartmentRepository departmentRepository,
-                             TaskRepository taskRepository,
-                             ModelMapper modelMapper) {
-        this.ratingRepository = ratingRepository;
-        this.userRepository = userRepository;
-        this.departmentRepository = departmentRepository;
-        this.taskRepository = taskRepository;
-        this.modelMapper = modelMapper;
-    }
+    private final RatingMapper ratingMapper;
 
     @Override
     @PreAuthorize("hasAnyRole('TEACHER','HOD')")
-    public RatingDTO giveRating(RatingPayload payload, Long givenById) {
+    public RatingDTO giveRating(RatingPayload payload, Long givenById) throws ResourcesNotFoundException, BadRequestException {
+        if (payload == null) throw new BadRequestException("Rating payload is required");
+        if (givenById == null) throw new BadRequestException("GivenById is required");
+
         User giver = userRepository.findById(givenById)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResourcesNotFoundException("User (giver) not found"));
 
         Rating rating = new Rating();
         rating.setScore(payload.getScore());
@@ -58,44 +56,53 @@ public class RatingServiceImpl implements IRatingService {
 
         switch (payload.getType()) {
             case TEACHER, HOD -> {
+                if (payload.getRatedUserId() == null) throw new BadRequestException("ratedUserId required for user rating");
                 User ratedUser = userRepository.findById(payload.getRatedUserId())
-                        .orElseThrow(() -> new RuntimeException("Rated user not found"));
-                if (ratedUser.getUserId().equals(giver.getUserId())) throw new RuntimeException("Self rating not allowed");
+                        .orElseThrow(() -> new ResourcesNotFoundException("Rated user not found"));
+                if (ratedUser.getUserId().equals(giver.getUserId())) {
+                    throw new BadRequestException("Self rating is not allowed");
+                }
                 rating.setRatedUser(ratedUser);
             }
             case DEPARTMENT -> {
+                if (payload.getRatedDepartmentId() == null)
+                    throw new BadRequestException("ratedDepartmentId required for department rating");
                 Department dept = departmentRepository.findById(payload.getRatedDepartmentId())
-                        .orElseThrow(() -> new RuntimeException("Department not found"));
+                        .orElseThrow(() -> new ResourcesNotFoundException("Department not found"));
                 rating.setRatedDepartment(dept);
             }
             case TASK -> {
+                if (payload.getTaskId() == null) throw new BadRequestException("taskId required for task rating");
                 Task task = taskRepository.findById(payload.getTaskId())
-                        .orElseThrow(() -> new RuntimeException("Task not found"));
+                        .orElseThrow(() -> new ResourcesNotFoundException("Task not found"));
                 rating.setTask(task);
             }
+            default -> throw new BadRequestException("Unsupported rating type: " + payload.getType());
         }
 
-        return modelMapper.map(ratingRepository.save(rating), RatingDTO.class);
+        Rating saved = ratingRepository.save(rating);
+        log.info("Rating saved (id={}) by user {}", saved.getRatingId(), givenById);
+        return ratingMapper.toDto(saved);
     }
 
     @Override
     public List<RatingDTO> getRatingsForUser(Long userId) {
         return ratingRepository.findByRatedUser_UserId(userId).stream()
-                .map(r -> modelMapper.map(r, RatingDTO.class))
+                .map(ratingMapper::toDto)
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<RatingDTO> getRatingsForDepartment(Long deptId) {
         return ratingRepository.findByRatedDepartment_DepartmentId(deptId).stream()
-                .map(r -> modelMapper.map(r, RatingDTO.class))
+                .map(ratingMapper::toDto)
                 .collect(Collectors.toList());
     }
 
     @Override
     public List<RatingDTO> getRatingsForTask(Long taskId) {
         return ratingRepository.findByTask_TaskId(taskId).stream()
-                .map(r -> modelMapper.map(r, RatingDTO.class))
+                .map(ratingMapper::toDto)
                 .collect(Collectors.toList());
     }
 }

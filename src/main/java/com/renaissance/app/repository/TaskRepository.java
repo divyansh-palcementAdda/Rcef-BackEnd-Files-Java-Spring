@@ -1,51 +1,56 @@
 package com.renaissance.app.repository;
 
+import org.springframework.data.domain.Pageable;
 import java.util.List;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import com.renaissance.app.model.Department;
 import com.renaissance.app.model.Task;
 import com.renaissance.app.model.TaskStatus;
-import com.renaissance.app.model.User;
 
 @Repository
 public interface TaskRepository extends JpaRepository<Task, Long> {
-	List<Task> findByAssignedTo_UserId(Long userId);
-//	 int countByAssignedToIdAndStatus(Long assignedToId, TaskStatus status);
-	List<Task> findByDepartment_DepartmentId(Long departmentId);
 
-	List<Task> findByStatus(TaskStatus status);
+    // 🔹 Find tasks assigned to a specific user (Many-to-Many)
+    List<Task> findByAssignedUsers_UserId(Long userId);
 
-	List<Task> findByAssignedTo_UserIdAndStatus(Long userId, TaskStatus status);
+    // 🔹 Find tasks by department (Many-to-Many)
+    List<Task> findByDepartments_DepartmentId(Long departmentId);
 
-	List<Task> findByDepartment_DepartmentIdAndStatus(Long departmentId, TaskStatus status);
+    // 🔹 Filter by status
+    List<Task> findByStatus(TaskStatus status);
 
-	List<Task> findByCreatedBy_UserId(Long userId); // ✅ add this for HOD reports
-	
-//	Long countByStatus(String status);
+    // 🔹 Filter by user and status
+    List<Task> findByAssignedUsers_UserIdAndStatus(Long userId, TaskStatus status);
 
-//	Long countByDepartment(Long department_id);
+    // 🔹 Filter by department and status
+    List<Task> findByDepartments_DepartmentIdAndStatus(Long departmentId, TaskStatus status);
 
-//	Long countByDepartmentAndStatus(Long departmentId, String status);
+    // 🔹 Tasks created by a specific user
+    List<Task> findByCreatedBy_UserId(Long userId);
 
-//	Long countByAssignedTo(Long userId);
+    // 🔹 Tasks requiring approval
+    List<Task> findByRequiresApprovalTrue();
 
-//	Long countByAssignedUserAndStatus(Long userId, String status);
-	
-	
-	    // 🔹 For Admin (all tasks)
-	    Long countByStatus(TaskStatus status);
+    // ==============================
+    // 🔹 COUNT QUERIES (for dashboards/statistics)
+    // ==============================
 
-	    // 🔹 For HOD (department-based)
-	    Long countByDepartment(Department department);
-	    Long countByDepartmentAndStatus(Department department, TaskStatus status);
+    // ✅ Admin-level: global count by status
+    Long countByStatus(TaskStatus status);
 
-	    // 🔹 For Teacher (user-based)
-	    Long countByAssignedTo(User user);
-	    Long countByAssignedToAndStatus(User user, TaskStatus status);
-	
+    // ✅ HOD-level: department-based counts
+    Long countByDepartments_DepartmentId(Long departmentId);
 
+    Long countByDepartments_DepartmentIdAndStatus(Long departmentId, TaskStatus status);
+
+    // ✅ Teacher-level: user-based counts
+    Long countByAssignedUsers_UserId(Long userId);
+
+    Long countByAssignedUsers_UserIdAndStatus(Long userId, TaskStatus status);
+    
+    Page<Task> findByAssignedUsers_UserId(Long userId, Pageable pageable);
 
 }

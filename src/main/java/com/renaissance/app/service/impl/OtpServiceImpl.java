@@ -1,11 +1,12 @@
 package com.renaissance.app.service.impl;
 
-import java.security.SecureRandom;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.security.SecureRandom;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import com.renaissance.app.model.UserStatus;
@@ -15,55 +16,139 @@ import com.renaissance.app.service.interfaces.IOtpService;
 @Service
 public class OtpServiceImpl implements IOtpService {
 
-    private final Map<String, String> otpStorage = new ConcurrentHashMap<>();
-    private final Map<String, Long> expiryMap = new ConcurrentHashMap<>();
-    private final Map<String, Integer> resendCount = new ConcurrentHashMap<>();
+	private static final Logger log = LoggerFactory.getLogger(OtpServiceImpl.class);
 
-    private static final long OTP_VALID_DURATION = TimeUnit.MINUTES.toMillis(5);
-    private static final int MAX_RESEND_PER_HOUR = 5;
-    private static final SecureRandom secureRandom = new SecureRandom();
-    @Autowired
-    private IUserRepository userRepository ;
+	private final Map<String, String> otpStorage = new ConcurrentHashMap<>();
+	private final Map<String, Long> expiryMap = new ConcurrentHashMap<>();
 
-    @Override
-    public String generateOtp(String email) {
-    	if(userRepository.findByEmail(email).get().getStatus().equals(UserStatus.ACTIVE)){
-			throw new IllegalArgumentException("The provided email is already registered: " +email);
-    	}
-        int code = secureRandom.nextInt(1_000_000);
-        String otp = String.format("%06d", code);
-        otpStorage.put(email, otp);
-        expiryMap.put(email, System.currentTimeMillis() + OTP_VALID_DURATION);
-        resendCount.putIfAbsent(email, 0);
-        return otp;
-    }
+	// Resend control: tracks attempts and the window start (ms)
+	private final Map<String, Integer> resendCount = new ConcurrentHashMap<>();
+	private final Map<String, Long> resendWindowStart = new ConcurrentHashMap<>();
 
-    @Override
-    public boolean validateOtp(String email, String otp) {
-        String current = otpStorage.get(email);
-        Long expiry = expiryMap.get(email);
-        if (current == null || expiry == null) return false;
-        if (System.currentTimeMillis() > expiry) {
-            clearOtp(email);
-            return false;
-        }
-        return current.equals(otp);
-    }
+	private static final long OTP_VALID_DURATION_MS = TimeUnit.MINUTES.toMillis(5);
+	private static final int MAX_RESEND_PER_HOUR = 5;
+	private static final long RESEND_WINDOW_MS = TimeUnit.HOURS.toMillis(1);
 
-    @Override
-    public void clearOtp(String email) {
-        otpStorage.remove(email);
-        expiryMap.remove(email);
-        resendCount.remove(email);
-    }
+	private static final SecureRandom secureRandom = new SecureRandom();
 
-    @Override
-    public boolean canResend(String email) {
-        return resendCount.getOrDefault(email, 0) < MAX_RESEND_PER_HOUR;
-    }
+	private final IUserRepository userRepository;
 
-    @Override
-    public void incrementResend(String email) {
-        resendCount.merge(email, 1, Integer::sum);
-    }
+	public OtpServiceImpl(IUserRepository userRepository) {
+		this.userRepository = userRepository;
+	}
+
+	@Override
+	public String generateOtp(String email) {
+		if (email == null || email.isBlank()) {
+			throw new IllegalArgumentException("Email is required for OTP generation");
+		}
+
+		// You may choose to disallow generating OTP for active users at a higher-level
+		// (AuthService).
+		// Here we simply generate OTP regardless, for verification/resend flows.
+		int code = secureRandom.nextInt(1_000_000);
+		String otp = String.format("%06d", code);
+
+		otpStorage.put(email, otp);
+		expiryMap.put(email, System.currentTimeMillis() + OTP_VALID_DURATION_MS);
+
+		// Initialize resend tracking if missing
+		resendCount.putIfAbsent(email, 0);
+		resendWindowStart.putIfAbsent(email, System.currentTimeMillis());
+
+		log.debug("Generated OTP for {} (expires in {} ms)", email, OTP_VALID_DURATION_MS);
+		return otp;
+	}
+
+	@Override
+	public boolean validateOtp(String email, String otp) {
+		if (email == null || otp == null)
+			return false;
+		String current = otpStorage.get(email);
+		Long expiry = expiryMap.get(email);
+
+		if (current == null || expiry == null)
+			return false;
+
+		if (System.currentTimeMillis() > expiry) {
+			clearOtp(email);
+			log.debug("OTP expired for {}", email);
+			return false;
+		}
+
+		boolean valid = current.equals(otp);
+		if (valid) {
+			// On successful validation we'll clear OTP (caller may also clear)
+			clearOtp(email);
+			log.debug("OTP validated for {}", email);
+			
+		} else {
+			log.debug("Invalid OTP attempt for {}", email);
+		}
+		return valid;
+	}
+
+	@Override
+	public void clearOtp(String email) {
+		otpStorage.remove(email);
+		expiryMap.remove(email);
+		resendCount.remove(email);
+		resendWindowStart.remove(email);
+		log.debug("Cleared OTP data for {}", email);
+	}
+
+	@Override
+	public boolean canResend(String email) {
+		if (email == null)
+			return false;
+		long now = System.currentTimeMillis();
+		resendWindowStart.putIfAbsent(email, now);
+		synchronized (getSyncObject(email)) {
+			long windowStart = resendWindowStart.getOrDefault(email, now);
+			if (now - windowStart > RESEND_WINDOW_MS) {
+				// reset window
+				resendWindowStart.put(email, now);
+				resendCount.put(email, 0);
+				return true;
+			}
+			return resendCount.getOrDefault(email, 0) < MAX_RESEND_PER_HOUR;
+		}
+	}
+
+	@Override
+	public void incrementResend(String email) {
+		if (email == null)
+			return;
+		long now = System.currentTimeMillis();
+		resendWindowStart.putIfAbsent(email, now);
+		synchronized (getSyncObject(email)) {
+			long windowStart = resendWindowStart.getOrDefault(email, now);
+			if (now - windowStart > RESEND_WINDOW_MS) {
+				// reset the window
+				resendWindowStart.put(email, now);
+				resendCount.put(email, 1);
+			} else {
+				resendCount.merge(email, 1, Integer::sum);
+			}
+			log.debug("Resend count for {} = {}", email, resendCount.get(email));
+		}
+	}
+
+	@Override
+	public boolean hasOtp(String email) {
+		return otpStorage.containsKey(email) && expiryMap.containsKey(email)
+				&& System.currentTimeMillis() < expiryMap.get(email);
+	}
+
+	@Override
+	public String getOtpForEmail(String email) {
+		if (!hasOtp(email))
+			return null;
+		return otpStorage.get(email);
+	}
+
+	// small per-email sync object (forces unique String key; ok for moderate scale)
+	private Object getSyncObject(String email) {
+		return email.intern();
+	}
 }

@@ -1,26 +1,37 @@
 package com.renaissance.app.payload;
 
 import java.time.LocalDateTime;
+import java.util.Set;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import com.renaissance.app.model.TaskStatus;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
+import jakarta.validation.constraints.Future;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-@JsonInclude(JsonInclude.Include.NON_NULL)
 public class TaskPayload {
-	private String title;
-	private String description;
-	private LocalDateTime dueDate;
-	private Long assignedToId;
-	private Long departmentId;
-	private boolean requiresApproval; // NEW (true if created by HOD)
-	private TaskStatus status;
+    @NotBlank
+    private String title;
+
+    private String description;
+
+    @Future
+    private LocalDateTime dueDate;
+
+    private LocalDateTime startDate;
+
+    @NotNull
+    private TaskStatus status;
+
+    private Boolean requiresApproval = false;
+
+    // Single assignment
+    private Long assignedToId;
+    private Long departmentId;
+
+    // Bulk assignment
+    private Set<Long> assignedToIds;
+    private Set<Long> departmentIds;
 }

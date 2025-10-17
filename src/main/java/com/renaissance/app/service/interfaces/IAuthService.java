@@ -9,11 +9,11 @@ import com.renaissance.app.payload.UserRequest;
 import jakarta.mail.AuthenticationFailedException;
 
 public interface IAuthService {
-	JwtResponse login(LoginRequest loginRequest) throws AuthenticationFailedException;
+	JwtResponse login(LoginRequest loginRequest) throws AuthenticationFailedException,AccessDeniedException;
 
 	UserDTO register(UserRequest userRequest) throws AccessDeniedException, ResourcesNotFoundException;
 
-	void sendVerificationOtp(String email);
+	void sendVerificationOtp(String email) throws AccessDeniedException;
 
-	boolean verifyOtpAndActivate(String email, String otp);
+	boolean verifyOtpAndActivate(String email, String otp) throws AccessDeniedException;
 }

@@ -10,4 +10,8 @@ public interface IOtpService {
 	boolean canResend(String email);
 
 	void incrementResend(String email);
+
+	boolean hasOtp(String email);
+
+	String getOtpForEmail(String email);
 }

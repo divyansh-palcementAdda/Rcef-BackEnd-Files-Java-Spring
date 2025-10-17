@@ -1,7 +1,8 @@
 package com.renaissance.app.service.interfaces;
 
+import com.renaissance.app.exception.ResourcesNotFoundException;
 import com.renaissance.app.payload.DashboardDto;
 
 public interface IDashboardService {
-    DashboardDto getDashboardData(String username);
+    DashboardDto getDashboardData(String username) throws ResourcesNotFoundException;
 }
