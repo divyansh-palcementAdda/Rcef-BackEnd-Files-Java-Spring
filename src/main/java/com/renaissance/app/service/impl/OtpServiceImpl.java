@@ -1,14 +1,16 @@
 package com.renaissance.app.service.impl;
 
+import java.security.SecureRandom;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.security.SecureRandom;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import com.renaissance.app.model.User;
 import com.renaissance.app.model.UserStatus;
 import com.renaissance.app.repository.IUserRepository;
 import com.renaissance.app.service.interfaces.IOtpService;
@@ -40,19 +42,37 @@ public class OtpServiceImpl implements IOtpService {
 	@Override
 	public String generateOtp(String email) {
 		if (email == null || email.isBlank()) {
-			throw new IllegalArgumentException("Email is required for OTP generation");
+			throw new IllegalArgumentException("Email is required for OTP generation.");
 		}
 
-		// You may choose to disallow generating OTP for active users at a higher-level
-		// (AuthService).
-		// Here we simply generate OTP regardless, for verification/resend flows.
+		Optional<User> existingUserOpt = userRepository.findByEmail(email);
+		if (existingUserOpt.isPresent()) {
+			User user = existingUserOpt.get();
+
+			if (user.getStatus() == UserStatus.ACTIVE) {
+				if (!user.isEmailVerified()) {
+				throw new IllegalArgumentException("This email is already registered but not yet verified.");
+			}
+				throw new IllegalArgumentException("This email is already registered with an active user.");
+			}
+
+			if (user.getStatus() == UserStatus.INACTIVE) {
+				throw new IllegalArgumentException(
+						"This email is already registered but marked as inactive on user id "+user.getUserId()+". Please reactivate the user.");
+			}
+
+			
+		}
+
+		// Generate a 6-digit OTP
 		int code = secureRandom.nextInt(1_000_000);
 		String otp = String.format("%06d", code);
 
+		// Store OTP with expiration time
 		otpStorage.put(email, otp);
 		expiryMap.put(email, System.currentTimeMillis() + OTP_VALID_DURATION_MS);
 
-		// Initialize resend tracking if missing
+		// Initialize resend tracking if not already present
 		resendCount.putIfAbsent(email, 0);
 		resendWindowStart.putIfAbsent(email, System.currentTimeMillis());
 
@@ -81,7 +101,7 @@ public class OtpServiceImpl implements IOtpService {
 			// On successful validation we'll clear OTP (caller may also clear)
 			clearOtp(email);
 			log.debug("OTP validated for {}", email);
-			
+
 		} else {
 			log.debug("Invalid OTP attempt for {}", email);
 		}

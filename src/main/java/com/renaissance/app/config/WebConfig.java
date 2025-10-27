@@ -14,7 +14,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "http://localhost:4200",   // Angular local dev
                         "https://rcef-frontend.com", // Example deployed frontend (replace with real URL)
                         "http://localhost:8080",
-                        "http://192.168.0.193:4200"
+                        "http://192.168.0.189:4200"
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")

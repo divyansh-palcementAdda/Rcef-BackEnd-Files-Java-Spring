@@ -35,19 +35,70 @@ public class OtpController {
 
         try {
             String otp = otpService.generateOtp(email);
-            log.info("Generated OTP for email {}: {}", email, otp); // Logging instead of System.err
+            log.info("✅ OTP generated for email: {}", email);
+
             emailService.sendOtpEmail(email, otp);
-            return ResponseEntity.ok(Map.of("message", "OTP sent successfully"));
+            log.info("📧 OTP email sent successfully to {}", email);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "status", "OTP_SENT",
+                    "message", "OTP sent successfully to your email."
+            ));
+
+        } catch (IllegalArgumentException e) {
+            String errorMessage = e.getMessage();
+            log.warn("⚠️ OTP generation failed for {}: {}", email, errorMessage);
+
+            // Custom handling for inactive user case
+            if (errorMessage.contains("inactive")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of(
+                                "success", false,
+                                "status", "INACTIVE_USER",
+                                "message", errorMessage,
+                                "redirect", true
+                        ));
+            }
+
+            // Custom handling for already active user
+            if (errorMessage.contains("active user")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of(
+                                "success", false,
+                                "status", "ACTIVE_USER",
+                                "message", errorMessage,
+                                "redirect", false
+                        ));
+            }
+
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of(
+                            "success", false,
+                            "status", "FAILED",
+                            "message", errorMessage
+                    ));
+
         } catch (MessagingException e) {
-            log.error("Failed to send OTP email to {}", email, e);
+            log.error("❌ Failed to send OTP email to {}: {}", email, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Failed to send OTP"));
+                    .body(Map.of(
+                            "success", false,
+                            "status", "EMAIL_FAILED",
+                            "message", "Failed to send OTP email. Please try again later."
+                    ));
+
         } catch (Exception e) {
-            log.error("Unexpected error while generating OTP for {}", email, e);
+            log.error("🚨 Unexpected error while generating OTP for {}: {}", email, e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Could not generate OTP"));
+                    .body(Map.of(
+                            "success", false,
+                            "status", "ERROR",
+                            "message", "An unexpected error occurred while processing your request."
+                    ));
         }
     }
+
     @PostMapping("/verify")
     public ResponseEntity<?> verify(@Valid @RequestBody OtpRequest request){
     	System.err.println("going to verify");

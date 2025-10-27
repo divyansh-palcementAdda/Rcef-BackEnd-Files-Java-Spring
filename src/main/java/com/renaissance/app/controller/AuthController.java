@@ -33,14 +33,21 @@ public class AuthController {
         try {
             JwtResponse jwtResponse = authService.login(loginRequest);
             return ResponseEntity.ok(jwtResponse);
-        } catch (AuthenticationFailedException | AccessDeniedException ex) {
-            log.warn("Login failed: {}", ex.getMessage());
-            return ResponseEntity.status(HttpServletResponse.SC_UNAUTHORIZED)
-                    .body(Map.of("message", ex.getMessage()));
+
+        } catch (AuthenticationFailedException ex) {
+            log.warn("⚠️ Login failed: {}", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("success", false, "message", ex.getMessage()));
+
+        } catch (AccessDeniedException ex) {
+            log.warn("🚫 Login blocked: {}", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("success", false, "message", ex.getMessage()));
+
         } catch (Exception ex) {
-            log.error("Unexpected login error", ex);
+            log.error("❌ Unexpected login error", ex);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Login failed due to server error"));
+                    .body(Map.of("success", false, "message", "Login failed due to server error."));
         }
     }
 
