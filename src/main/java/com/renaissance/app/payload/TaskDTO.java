@@ -2,9 +2,15 @@ package com.renaissance.app.payload;
 
 import java.time.LocalDateTime;
 import java.util.List;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.renaissance.app.model.TaskStatus;
-import lombok.*;
+import com.renaissance.app.model.User;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
@@ -21,6 +27,11 @@ public class TaskDTO {
 
     private Long createdById;
     private String createdByName;
+    
+    private LocalDateTime startedAt;
+    private Long startedById;               // WHO started
+    private String startedByName;
+
 
     // ✅ Multi-user and department support
     private List<Long> assignedToIds;
@@ -33,6 +44,5 @@ public class TaskDTO {
     private boolean approved;
     private LocalDateTime rfcCompletedAt;
 
-    private List<TaskProofDTO> proofs;
     private List<TaskRequestDTO> requests;
 }

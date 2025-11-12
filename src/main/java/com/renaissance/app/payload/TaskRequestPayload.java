@@ -17,4 +17,5 @@ public class TaskRequestPayload {
 	private Long taskId;
     private RequestType requestType; // CLOSURE, EXTENSION
     private String remarks;
+    
 }

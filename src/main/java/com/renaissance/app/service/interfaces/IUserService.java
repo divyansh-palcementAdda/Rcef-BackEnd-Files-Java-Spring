@@ -28,4 +28,6 @@ public interface IUserService {
     List<UserDTO> getUsersByDepartment(Long departmentId) throws AccessDeniedException;
 	
 	List<UserDTO> getAllUserByRole(Role role) throws AccessDeniedException, ResourcesNotFoundException;
+
+	List<UserDTO> getUsersByIds(List<Long> ids) throws ResourcesNotFoundException;
 }

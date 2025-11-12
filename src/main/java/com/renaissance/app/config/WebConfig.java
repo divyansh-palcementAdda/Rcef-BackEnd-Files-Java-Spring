@@ -11,15 +11,15 @@ public class WebConfig implements WebMvcConfigurer {
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
                 .allowedOrigins(
-                        "http://localhost:4200",   // Angular local dev
-                        "https://rcef-frontend.com", // Example deployed frontend (replace with real URL)
-                        "http://localhost:8080",
-                        "http://192.168.0.189:4200"
+                        "http://localhost:4200",
+                        "http://192.168.0.183:4200",
+                        "http://172.29.176.1:4200",
+                        "https://rcef-frontend.com"  // Replace with your real domain
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
-                .exposedHeaders("Authorization") // expose JWT header if needed
-                .allowCredentials(true)          // allow cookies/headers with credentials
-                .maxAge(3600);                   // cache preflight response for 1 hour
+                .exposedHeaders("Authorization")
+                .allowCredentials(true)
+                .maxAge(3600);
     }
 }

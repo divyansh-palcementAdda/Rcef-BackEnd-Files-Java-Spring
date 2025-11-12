@@ -1,5 +1,7 @@
 package com.renaissance.app.payload;
 
+import java.util.List;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.renaissance.app.model.Role;
 import com.renaissance.app.model.UserStatus;
@@ -21,13 +23,13 @@ public class UserDTO {
 	private String fullName;
 	private Role role;
 	private UserStatus status;
-	private Long departmentId;
-	private String departmentName;
+	private List<Long> departmentIds;
+	private List<String> departmentNames;
 
 	private boolean emailVerified; // NEW
-	
-	 private Long pendingTasks;
-	    private Long upcomingTasks;
-	    private Long delayedTasks;
-	    private Long closedTasks;
+
+	private Long pendingTasks;
+	private Long upcomingTasks;
+	private Long delayedTasks;
+	private Long closedTasks;
 }

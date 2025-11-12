@@ -12,6 +12,7 @@ import com.renaissance.app.exception.BadRequestException;
 import com.renaissance.app.exception.ResourcesNotFoundException;
 import com.renaissance.app.mapper.DepartmentMapper;
 import com.renaissance.app.model.Department;
+import com.renaissance.app.model.UserStatus;
 import com.renaissance.app.payload.DepartmentDTO;
 import com.renaissance.app.repository.DepartmentRepository;
 import com.renaissance.app.service.interfaces.IDepartmentService;
@@ -40,11 +41,24 @@ public class DepartmentServiceImpl implements IDepartmentService {
 
         Department dept = departmentMapper.toEntity(dto);
         dept.setCreatedAt(LocalDateTime.now());
+        dept.setDepartmentStatus(UserStatus.ACTIVE);
         Department saved = departmentRepository.save(dept);
         log.info("✅ Department created successfully: {}", saved.getName());
         return departmentMapper.toDto(saved);
     }
 
+    @Override
+    @PreAuthorize("hasAnyRole('ADMIN', 'HOD')")
+    public List<DepartmentDTO> getDepartmentsByIds(List<Long> ids) throws ResourcesNotFoundException {
+        List<Department> departments = departmentRepository.findAllById(ids);
+        if (departments.isEmpty()) {
+            throw new ResourcesNotFoundException("No departments found for given IDs");
+        }
+        return departments.stream()
+                .map(departmentMapper::toDto)
+                .collect(Collectors.toList());
+    }
+    
     // ================= UPDATE ================= //
     @Override
     @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
@@ -64,7 +78,7 @@ public class DepartmentServiceImpl implements IDepartmentService {
         if (dto.getDescription() != null && !dto.getDescription().isBlank()) {
             dept.setDescription(dto.getDescription().trim());
         }
-
+        dept.setDepartmentStatus(UserStatus.ACTIVE);
 //        dept.setUpdatedAt(LocalDateTime.now());
         Department updated = departmentRepository.save(dept);
         log.info("✏️ Department updated successfully: {}", updated.getName());
@@ -77,7 +91,8 @@ public class DepartmentServiceImpl implements IDepartmentService {
     public void deleteDepartment(Long id) throws ResourcesNotFoundException {
         Department dept = departmentRepository.findById(id)
                 .orElseThrow(() -> new ResourcesNotFoundException("Department not found with id: " + id));
-        departmentRepository.delete(dept);
+        dept.setDepartmentStatus(UserStatus.INACTIVE);
+        departmentRepository.save(dept);
         log.info("🗑️ Department deleted successfully with id: {}", id);
     }
 

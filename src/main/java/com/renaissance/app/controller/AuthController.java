@@ -4,7 +4,13 @@ import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import com.renaissance.app.exception.AccessDeniedException;
 import com.renaissance.app.payload.JwtResponse;
@@ -21,7 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/api/auth")
-@CrossOrigin(origins = {"http://localhost:4200"}, allowCredentials = "true")
+//@CrossOrigin(origins = {"http://localhost:4200"}, allowCredentials = "true")
 @RequiredArgsConstructor
 @Slf4j
 public class AuthController {
@@ -50,6 +56,33 @@ public class AuthController {
                     .body(Map.of("success", false, "message", "Login failed due to server error."));
         }
     }
+    
+    @PostMapping("/refresh-token")
+    public ResponseEntity<?> refreshAccessToken(@RequestBody Map<String, String> request) {
+        try {
+            String refreshToken = request.get("refreshToken");
+            System.err.println("Refrishing token :- "+refreshToken);
+            JwtResponse jwtResponse = authService.refreshAccessToken(refreshToken);
+            System.err.println("jwt response :- "+jwtResponse);
+            return ResponseEntity.ok(jwtResponse);
+
+        } catch (AccessDeniedException ex) {
+            log.warn("🚫 Refresh token invalid: {}", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("success", false, "message", ex.getMessage()));
+
+        } catch (Exception ex) {
+            log.error("❌ Unexpected error during token refresh", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("success", false, "message", "Failed to refresh token."));
+        }
+    }
+    
+//    @DeleteMapping("/logout")
+//    public ResponseEntity<?> removeRefreshTokenOnLogout(){
+//    	
+//    }
+
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@Valid @RequestBody UserRequest userRequest) {

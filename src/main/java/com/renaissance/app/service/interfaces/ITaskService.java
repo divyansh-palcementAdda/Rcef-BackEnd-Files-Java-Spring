@@ -1,9 +1,11 @@
 package com.renaissance.app.service.interfaces;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import com.renaissance.app.exception.BadRequestException;
 import com.renaissance.app.exception.ResourcesNotFoundException;
+import com.renaissance.app.exception.UnauthorizedException;
 import com.renaissance.app.model.TaskStatus;
 import com.renaissance.app.payload.TaskDTO;
 import com.renaissance.app.payload.TaskPayload;
@@ -57,6 +59,12 @@ public interface ITaskService {
      */
     List<TaskDTO> getAllTasks();
 
+    
+    /**
+     * Get all tasks in the system (ADMIN only).
+     */
+    List<TaskDTO> getAllTasksWhichRequriesApproval();
+    
     /**
      * Get tasks filtered by a specific status (e.g. PENDING, CLOSED, etc.).
      */
@@ -66,8 +74,9 @@ public interface ITaskService {
      * Approve a task.
      * Only ADMIN or HOD can approve tasks.
      * @throws ResourcesNotFoundException 
+     * @throws BadRequestException 
      */
-    TaskDTO approveTask(Long taskId) throws ResourcesNotFoundException;
+    TaskDTO approveTask(Long taskId) throws ResourcesNotFoundException, BadRequestException;
 
     /**
      * Reject a task.
@@ -76,4 +85,15 @@ public interface ITaskService {
      * @throws ResourcesNotFoundException 
      */
     TaskDTO rejectTask(Long taskId, String reason) throws BadRequestException, ResourcesNotFoundException;
+
+	TaskDTO closeTask(Long taskId) throws ResourcesNotFoundException, BadRequestException;
+
+	TaskDTO approveExtension(Long taskId) throws ResourcesNotFoundException, BadRequestException;
+
+	TaskDTO rejectExtension(Long taskId, String reason) throws ResourcesNotFoundException, BadRequestException;
+
+	TaskDTO requestExtension(Long taskId, LocalDateTime newDueDate, String reason)
+			throws ResourcesNotFoundException, BadRequestException;
+
+	TaskDTO startTask(Long taskId, Long userId) throws BadRequestException, UnauthorizedException;
 }

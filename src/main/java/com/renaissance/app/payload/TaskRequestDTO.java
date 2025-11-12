@@ -1,6 +1,7 @@
 package com.renaissance.app.payload;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.renaissance.app.model.RequestStatus;
@@ -29,4 +30,7 @@ public class TaskRequestDTO {
 	private String approvedByName;
 
 	private LocalDateTime requestDate;
+	// Add to TaskRequestDTO.java
+	private Long taskId;
+	private List<TaskProofDTO> proofs;
 }

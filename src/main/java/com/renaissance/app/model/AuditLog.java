@@ -1,13 +1,36 @@
 package com.renaissance.app.model;
 
-import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
-import lombok.*;
-
 import java.time.LocalDateTime;
 
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 @Entity
-@Table(name = "audit_logs")
+@Table(
+    name = "audit_logs",
+    indexes = {
+        @Index(name = "idx_audit_user", columnList = "user_id"),
+        @Index(name = "idx_audit_entity", columnList = "entity, entityId"),
+        @Index(name = "idx_audit_timestamp", columnList = "timestamp DESC")
+    }
+)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -18,41 +41,35 @@ public class AuditLog {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long logId;
 
-    // ====================== USER ======================
     @ManyToOne(optional = false)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id", nullable = false, updatable = false)
     @NotNull(message = "Audit log must be associated with a user")
     private User user;
 
-    // ====================== ACTION ======================
     @NotBlank(message = "Action must not be empty")
-    @Size(min = 3, max = 100, message = "Action must be between 3 and 100 characters")
-    @Pattern(
-        regexp = "^[A-Za-z0-9 ._-]+$",
-        message = "Action can only contain letters, numbers, spaces, dots, underscores, and hyphens"
-    )
+    @Size(min = 3, max = 100)
+    @Pattern(regexp = "^[A-Za-z0-9 ._-]+$", message = "Invalid action format")
     @Column(nullable = false, length = 100)
-    private String action; // e.g., "Created Task"
+    private String action;
 
-    // ====================== ENTITY ======================
     @NotBlank(message = "Entity name must not be empty")
-    @Size(min = 2, max = 50, message = "Entity name must be between 2 and 50 characters")
-    @Pattern(
-        regexp = "^[A-Za-z0-9_-]+$",
-        message = "Entity name can only contain letters, numbers, underscores, and hyphens"
-    )
+    @Size(min = 2, max = 50)
+    @Pattern(regexp = "^[A-Za-z0-9_-]+$", message = "Invalid entity name")
     @Column(nullable = false, length = 50)
-    private String entity; // e.g., "Task"
+    private String entity;
 
-    // ====================== ENTITY ID ======================
     @NotNull(message = "Entity ID must be provided")
-    @Positive(message = "Entity ID must be a positive number")
+    @Positive(message = "Entity ID must be positive")
     @Column(nullable = false)
-    private Long entityId; // related entity ID
+    private Long entityId;
 
-    // ====================== TIMESTAMP ======================
-    @NotNull(message = "Timestamp must be provided")
-    @PastOrPresent(message = "Timestamp cannot be in the future")
-    @Column(nullable = false)
-    private LocalDateTime timestamp;
+    @NotNull
+    @PastOrPresent
+    @Column(nullable = false, updatable = false)
+    @Builder.Default
+    private LocalDateTime timestamp = LocalDateTime.now();
+
+    // Optional: extra details
+    @Column(columnDefinition = "TEXT")
+    private String details;
 }

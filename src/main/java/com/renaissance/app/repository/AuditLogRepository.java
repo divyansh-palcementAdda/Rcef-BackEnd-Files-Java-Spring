@@ -14,4 +14,8 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, Long> {
 	List<AuditLog> findByEntity(String entity);
 
 	List<AuditLog> findByEntityAndEntityId(String entity, Long entityId);
+	
+	List<AuditLog> findByUser_UserIdOrderByTimestampDesc(Long userId);
+	
+	List<AuditLog> findByEntityAndEntityIdOrderByTimestampDesc(String entity, Long entityId);
 }

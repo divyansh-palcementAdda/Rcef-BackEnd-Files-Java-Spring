@@ -1,14 +1,17 @@
 package com.renaissance.app.repository;
 
-import org.springframework.data.domain.Pageable;
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import com.renaissance.app.model.Task;
 import com.renaissance.app.model.TaskStatus;
+import com.renaissance.app.model.User;
 
 @Repository
 public interface TaskRepository extends JpaRepository<Task, Long> {
@@ -52,5 +55,15 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
     Long countByAssignedUsers_UserIdAndStatus(Long userId, TaskStatus status);
     
     Page<Task> findByAssignedUsers_UserId(Long userId, Pageable pageable);
+
+	List<Task> findByStartDate(LocalDate localDate);
+
+	List<Task> findByDueDate(LocalDate plusDays);
+
+	List<Task> findByDueDateBefore(LocalDate now);
+
+	List<Task> findByDueDateBeforeAndStatusNot(LocalDate date, TaskStatus status);
+
+	List<Task> findByRequiresApprovalTrueAndApprovedFalse();
 
 }

@@ -1,14 +1,25 @@
 package com.renaissance.app.controller;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import com.renaissance.app.exception.AccessDeniedException;
+import com.renaissance.app.exception.ResourcesNotFoundException;
 import com.renaissance.app.model.Role;
 import com.renaissance.app.model.UserStatus;
+import com.renaissance.app.payload.IdsRequest;
 import com.renaissance.app.payload.UserDTO;
 import com.renaissance.app.payload.UserRequest;
 import com.renaissance.app.service.interfaces.IUserService;
@@ -16,11 +27,9 @@ import com.renaissance.app.service.interfaces.IUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/user")
-@CrossOrigin(origins = { "http://localhost:4200" }, allowCredentials = "true")
+//@CrossOrigin(origins = { "http://localhost:4200" }, allowCredentials = "true")
 @RequiredArgsConstructor
 @Slf4j
 public class UserController {
@@ -41,6 +50,28 @@ public class UserController {
 					.body(Map.of("message", "Failed to fetch users"));
 		}
 	}
+	
+	@PostMapping("/by-ids")
+	public ResponseEntity<?> getUsersByIds(@RequestBody IdsRequest request) {
+	    try {
+	        if (request == null || request.getIds() == null || request.getIds().isEmpty()) {
+	            return ResponseEntity.badRequest()
+	                    .body(Map.of("message", "IDs list cannot be null or empty"));
+	        }
+
+	        List<UserDTO> users = userService.getUsersByIds(request.getIds());
+	        return ResponseEntity.ok(users);
+
+	    } catch (ResourcesNotFoundException ex) {
+	        log.warn("Users not found for IDs: {}", request.getIds());
+	        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+	                .body(Map.of("message", ex.getMessage()));
+	    } catch (Exception ex) {
+	        log.error("Unexpected error fetching users by IDs: {}", request.getIds(), ex);
+	        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+	                .body(Map.of("message", "Failed to fetch users"));
+	    }
+	}
 
 	@GetMapping("/{id}")
 	public ResponseEntity<?> getUser(@PathVariable("id") Long id) {
@@ -60,6 +91,7 @@ public class UserController {
 	@PutMapping("/{id}")
 	public ResponseEntity<?> updateUser(@PathVariable("id") Long id, @RequestBody UserRequest request) {
 		try {
+			System.err.println(request);
 			UserDTO updated = userService.updateUser(id, request);
 			return ResponseEntity.ok(updated);
 		} catch (AccessDeniedException ex) {

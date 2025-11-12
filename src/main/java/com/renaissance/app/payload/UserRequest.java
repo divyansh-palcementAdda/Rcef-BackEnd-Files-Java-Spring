@@ -1,5 +1,7 @@
 package com.renaissance.app.payload;
 
+import java.util.List;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.renaissance.app.model.Role;
 
@@ -19,5 +21,5 @@ public class UserRequest {
 	private String email;
 	private String fullName;
 	private Role role;
-	private Long departmentId;
+	private List<Long> departmentIds;
 }

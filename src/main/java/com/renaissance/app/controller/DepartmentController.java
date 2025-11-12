@@ -1,21 +1,29 @@
 package com.renaissance.app.controller;
 
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.renaissance.app.exception.BadRequestException;
 import com.renaissance.app.exception.ResourcesNotFoundException;
 import com.renaissance.app.payload.DepartmentDTO;
+import com.renaissance.app.payload.IdsRequest;
 import com.renaissance.app.service.interfaces.IDepartmentService;
 
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/departments")
@@ -24,6 +32,29 @@ import java.util.Map;
 public class DepartmentController {
 
     private final IDepartmentService departmentService;
+    
+    
+    @PostMapping("/by-ids")
+    public ResponseEntity<?> getDepartmentsByIds(@RequestBody IdsRequest request) {
+        try {
+            if (request == null || request.getIds() == null || request.getIds().isEmpty()) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("message", "IDs list cannot be null or empty"));
+            }
+
+            List<DepartmentDTO> departments = departmentService.getDepartmentsByIds(request.getIds());
+            return ResponseEntity.ok(departments);
+
+        } catch (ResourcesNotFoundException ex) {
+            log.warn("Departments not found for IDs: {}", request.getIds());
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", ex.getMessage()));
+        } catch (Exception ex) {
+            log.error("Unexpected error fetching departments by IDs: {}", request.getIds(), ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Failed to fetch departments"));
+        }
+    }
 
     // Create Department
     @PostMapping
@@ -92,6 +123,8 @@ public class DepartmentController {
                     .body(Map.of("message", "Failed to fetch department"));
         }
     }
+    
+    
 
     // Get All Departments
     @GetMapping

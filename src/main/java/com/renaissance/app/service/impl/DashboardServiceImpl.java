@@ -1,5 +1,7 @@
 package com.renaissance.app.service.impl;
 
+import java.util.List;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,13 +48,18 @@ public class DashboardServiceImpl implements IDashboardService {
             throw new IllegalStateException("User role is missing for: " + username);
         }
 
+        List<Department> departments = user.getDepartments();
+
         DashboardDto.DashboardDtoBuilder builder = DashboardDto.builder()
                 .userName(user.getUsername())
                 .email(user.getEmail())
                 .loggedInRole(role.name())
-                .departmentName(user.getDepartment() != null ? user.getDepartment().getName() : null);
+                .departmentName(
+                        departments != null && !departments.isEmpty()
+                                ? String.join(", ", departments.stream().map(Department::getName).toList())
+                                : null
+                );
 
-        // Role-based data aggregation
         switch (role) {
             case ADMIN -> populateAdminStats(builder, user);
             case HOD -> populateHodStats(builder, user);
@@ -71,6 +78,7 @@ public class DashboardServiceImpl implements IDashboardService {
             b.totalTask(taskRepository.count())
                     .pendingTask(taskRepository.countByStatus(TaskStatus.PENDING))
                     .delayedTask(taskRepository.countByStatus(TaskStatus.DELAYED))
+                    .activeTask(taskRepository.countByStatus(TaskStatus.IN_PROGRESS))
                     .completedTask(taskRepository.countByStatus(TaskStatus.CLOSED))
                     .upcomingTask(taskRepository.countByStatus(TaskStatus.UPCOMING))
                     .requestForClosure(taskRepository.countByStatus(TaskStatus.REQUEST_FOR_CLOSURE))
@@ -88,24 +96,45 @@ public class DashboardServiceImpl implements IDashboardService {
 
     // ============================ HOD DASHBOARD =============================
     private void populateHodStats(DashboardDto.DashboardDtoBuilder b, User hod) {
-        Department dept = hod.getDepartment();
-        if (dept == null) {
-            throw new IllegalStateException("HOD must be associated with a department");
+        List<Department> departments = hod.getDepartments();
+        if (departments == null || departments.isEmpty()) {
+            throw new IllegalStateException("HOD must be associated with at least one department");
         }
 
         try {
-            Long deptId = dept.getDepartmentId();
+            long totalTasks = 0,activeTasks=0, pending = 0, delayed = 0, completed = 0, upcoming = 0, reqClosure = 0, reqExt = 0, extended = 0;
+            long activeUsers = 0, totalUsers = 0;
 
-            b.totalTask(taskRepository.countByDepartments_DepartmentId(deptId))
-                    .pendingTask(taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.PENDING))
-                    .delayedTask(taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.DELAYED))
-                    .completedTask(taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.CLOSED))
-                    .upcomingTask(taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.UPCOMING))
-                    .requestForClosure(taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.REQUEST_FOR_CLOSURE))
-                    .requestForExtension(taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.REQUEST_FOR_EXTENSION))
-                    .extendedTask(taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.EXTENDED))
-                    .activeUsers(userRepository.countByDepartmentAndStatus(dept, UserStatus.ACTIVE))
-                    .totalUsers(userRepository.countByDepartment(dept));
+            for (Department dept : departments) {
+                Long deptId = dept.getDepartmentId();
+
+                totalTasks += taskRepository.countByDepartments_DepartmentId(deptId);
+                pending += taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.PENDING);
+                delayed += taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.DELAYED);
+                completed += taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.CLOSED);
+                upcoming += taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.UPCOMING);
+                reqClosure += taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.REQUEST_FOR_CLOSURE);
+                reqExt += taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.REQUEST_FOR_EXTENSION);
+                extended += taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.EXTENDED);
+                activeTasks+=taskRepository.countByDepartments_DepartmentIdAndStatus(deptId, TaskStatus.IN_PROGRESS);
+                
+                activeUsers += userRepository.countByDepartments_DepartmentIdAndStatus(dept.getDepartmentId(), UserStatus.ACTIVE);
+                totalUsers += userRepository.countByDepartments_DepartmentId(dept.getDepartmentId());
+
+            }
+
+            b.totalTask(totalTasks)
+                    .pendingTask(pending)
+                    .delayedTask(delayed)
+                    .completedTask(completed)
+                    .upcomingTask(upcoming)
+                    .requestForClosure(reqClosure)
+                    .requestForExtension(reqExt)
+                    .extendedTask(extended)
+                    .activeUsers(activeUsers)
+                    .activeTask(activeTasks)
+                    .totalUsers(totalUsers);
+
         } catch (Exception e) {
             log.error("❌ Error populating HOD dashboard for user {}", hod.getUsername(), e);
             throw new RuntimeException("Failed to load HOD dashboard", e);
@@ -122,8 +151,10 @@ public class DashboardServiceImpl implements IDashboardService {
                     .delayedTask(taskRepository.countByAssignedUsers_UserIdAndStatus(teacherId, TaskStatus.DELAYED))
                     .completedTask(taskRepository.countByAssignedUsers_UserIdAndStatus(teacherId, TaskStatus.CLOSED))
                     .upcomingTask(taskRepository.countByAssignedUsers_UserIdAndStatus(teacherId, TaskStatus.UPCOMING))
+                    .activeTask(taskRepository.countByAssignedUsers_UserIdAndStatus(teacherId, TaskStatus.IN_PROGRESS))
                     .requestForClosure(taskRepository.countByAssignedUsers_UserIdAndStatus(teacherId, TaskStatus.REQUEST_FOR_CLOSURE))
                     .requestForExtension(taskRepository.countByAssignedUsers_UserIdAndStatus(teacherId, TaskStatus.REQUEST_FOR_EXTENSION))
+         
                     .extendedTask(taskRepository.countByAssignedUsers_UserIdAndStatus(teacherId, TaskStatus.EXTENDED));
         } catch (Exception e) {
             log.error("❌ Error populating Teacher dashboard for user {}", teacher.getUsername(), e);

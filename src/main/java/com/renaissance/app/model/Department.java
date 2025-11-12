@@ -2,12 +2,29 @@ package com.renaissance.app.model;
 
 import java.time.LocalDateTime;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import jakarta.persistence.*;
-import jakarta.validation.constraints.*;
-import lombok.*;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.Table;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PastOrPresent;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 
 @Entity
 @Table(name = "departments")
@@ -31,16 +48,26 @@ public class Department {
     @Size(max = 500)
     private String description;
 
+    @Enumerated(EnumType.STRING)
+    @NotNull
+    @Column(nullable = false, length = 20)
+    private UserStatus departmentStatus;
+
     @NotNull
     @PastOrPresent
     @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    // Lazy loaded users to prevent serialization issues
-    @OneToMany(mappedBy = "department", fetch = FetchType.LAZY)
-    private List<User> users;
+    // ===============================
+    // Relationship with Users
+    // ===============================
+    @ManyToMany(mappedBy = "departments", fetch = FetchType.LAZY)
+    private Set<User> users = new HashSet<>();
 
-    @ManyToMany(mappedBy = "departments")
+    // ===============================
+    // Relationship with Tasks
+    // ===============================
+    @ManyToMany(mappedBy = "departments", fetch = FetchType.LAZY)
     private Set<Task> tasks = new HashSet<>();
 
     // ===============================
