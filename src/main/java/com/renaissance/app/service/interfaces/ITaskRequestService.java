@@ -11,9 +11,9 @@ import com.renaissance.app.payload.TaskRequestMultipartPayload;
 
 public interface ITaskRequestService {
 
-	TaskRequestDTO approveRequest(ApproveRequestPayload payload, Long approverId);
+	TaskRequestDTO approveRequest(ApproveRequestPayload payload, Long approverId) throws BadRequestException;
 	
-	TaskRequestDTO rejectRequest(Long requestId, Long approverId, String reason);
+	TaskRequestDTO rejectRequest(Long requestId, Long approverId, String reason) throws BadRequestException;
 
 	List<TaskRequestDTO> getRequestsForTask(Long taskId);
 

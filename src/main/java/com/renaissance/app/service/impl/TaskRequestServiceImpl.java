@@ -5,6 +5,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+//add imports at top of file
+import org.springframework.dao.DataIntegrityViolationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -41,7 +46,7 @@ public class TaskRequestServiceImpl implements ITaskRequestService {
     private final IUserRepository userRepository;
     private final TaskRequestMapper taskRequestMapper;
     private final TaskProofService taskProofService;
-
+    private static final Logger log = LoggerFactory.getLogger(TaskRequestServiceImpl.class);
     // --------------------------------------------------------------
     // SINGLE API: create request + upload proofs
     // --------------------------------------------------------------
@@ -124,29 +129,88 @@ public class TaskRequestServiceImpl implements ITaskRequestService {
         taskRepository.save(task);
     }
 
+//    @Override
+//    @PreAuthorize("hasRole('ADMIN')")
+//    @Transactional
+//    public TaskRequestDTO approveRequest(ApproveRequestPayload payload, Long approverId) {
+//        TaskRequest request = getRequestById(payload.getRequestId());
+//        User approver = getUserById(approverId);
+//        request.setStatus(RequestStatus.APPROVED);
+//        request.setApprovedBy(approver);
+//
+//        Task task = request.getTask();
+//        updateTaskStatusOnApproval(request, task, payload);
+//        System.err.println("*********************************1");
+//        taskRequestRepository.save(request);
+//        System.err.println("*********************************2");
+//        taskRepository.save(task);
+//        System.err.println("*********************************3");
+//
+//        return taskRequestMapper.toDto(request);
+//    }
+//    @Override
+//    @PreAuthorize("hasRole('ADMIN')")
+//    public TaskRequestDTO rejectRequest(Long requestId, Long approverId, String reason) {
+//        if (reason == null || reason.isBlank()) {
+//            throw new IllegalArgumentException("Rejection reason is required");
+//        }
+//
+//        TaskRequest request = getRequestById(requestId);
+//        User approver = getUserById(approverId);
+//
+//        request.setStatus(RequestStatus.REJECTED);
+//        request.setApprovedBy(approver);
+//        request.setRemarks(reason);
+//
+//        Task task = request.getTask();
+//        updateTaskStatusOnRejection(request, task); // Same logic as approval, but for rejection
+//
+////        taskRequestRepository.save(request);
+//       // Save task changes
+//
+//        return taskRequestMapper.toDto(request);
+//    }
+
+    
+    
+    
+    
+    
+    
     @Override
     @PreAuthorize("hasRole('ADMIN')")
     @Transactional
-    public TaskRequestDTO approveRequest(ApproveRequestPayload payload, Long approverId) {
+    public TaskRequestDTO approveRequest(ApproveRequestPayload payload, Long approverId) throws BadRequestException {
         TaskRequest request = getRequestById(payload.getRequestId());
         User approver = getUserById(approverId);
+
         request.setStatus(RequestStatus.APPROVED);
         request.setApprovedBy(approver);
 
         Task task = request.getTask();
         updateTaskStatusOnApproval(request, task, payload);
-        System.err.println("*********************************1");
 
-        taskRequestRepository.save(request);
-        System.err.println("*********************************2");
-        taskRepository.save(task);
-        System.err.println("*********************************3");
+        log.info("[approveRequest] requestId={} taskId={} newTaskStatus={}", request.getRequestId(),
+                task.getTaskId(), task.getStatus());
+
+        try {
+            TaskRequest savedReq = taskRequestRepository.save(request);
+            Task savedTask = taskRepository.save(task);
+            log.info("[approveRequest] saved requestId={} taskId={}", savedReq.getRequestId(), savedTask.getTaskId());
+        } catch (DataIntegrityViolationException dive) {
+            log.error("[approveRequest] Data integrity violation while saving request/task", dive);
+            throw new BadRequestException("Database constraint violated while approving request: " + getRootCauseMessage(dive));
+        } catch (Exception ex) {
+            log.error("[approveRequest] Unexpected error while saving request/task", ex);
+            throw ex;
+        }
 
         return taskRequestMapper.toDto(request);
     }
+
     @Override
     @PreAuthorize("hasRole('ADMIN')")
-    public TaskRequestDTO rejectRequest(Long requestId, Long approverId, String reason) {
+    public TaskRequestDTO rejectRequest(Long requestId, Long approverId, String reason) throws BadRequestException {
         if (reason == null || reason.isBlank()) {
             throw new IllegalArgumentException("Rejection reason is required");
         }
@@ -155,18 +219,53 @@ public class TaskRequestServiceImpl implements ITaskRequestService {
         User approver = getUserById(approverId);
 
         request.setStatus(RequestStatus.REJECTED);
+        // It's unusual to set "approvedBy" on rejection — consider using `reviewedBy` if available.
         request.setApprovedBy(approver);
         request.setRemarks(reason);
 
         Task task = request.getTask();
-        updateTaskStatusOnRejection(request, task); // Same logic as approval, but for rejection
 
-        taskRequestRepository.save(request);
-        taskRepository.save(task); // Save task changes
+        // IMPORTANT: do not null-out DB columns without ensuring the column is nullable.
+        // Safer approach: only change status and updatedAt; do NOT clear rfcCompletedAt blindly.
+        updateTaskStatusOnRejection(request, task);
+
+        log.info("[rejectRequest] requestId={} taskId={} newTaskStatus={}", request.getRequestId(),
+                task.getTaskId(), task.getStatus());
+
+        try {
+            TaskRequest savedReq = taskRequestRepository.save(request);
+
+            // Only save task if we've actually changed the status/date fields.
+            // (Compare to DB values if you need stricter checks.)
+            Task savedTask = taskRepository.save(task);
+
+            log.info("[rejectRequest] saved requestId={} taskId={}", savedReq.getRequestId(), savedTask.getTaskId());
+        } catch (DataIntegrityViolationException dive) {
+            log.error("[rejectRequest] Data integrity violation while saving request/task", dive);
+            // Rethrow a more helpful exception so the caller/backend logs contain the root cause.
+            throw new BadRequestException("Database constraint violated while rejecting request: " + getRootCauseMessage(dive));
+        } catch (Exception ex) {
+            log.error("[rejectRequest] Unexpected error while saving request/task", ex);
+            throw ex;
+        }
 
         return taskRequestMapper.toDto(request);
     }
+    
+    
+    
+    private String getRootCauseMessage(Throwable t) {
+        Throwable root = t;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        return root.getMessage();
+    }
 
+    
+    
+    
+    
     @Override
     @Transactional(readOnly = true)
     public List<TaskRequestDTO> getRequestsForTask(Long taskId) {
@@ -197,6 +296,7 @@ public class TaskRequestServiceImpl implements ITaskRequestService {
             LocalDate newDue = payload.getNewDueDate().toLocalDate();      
             task.setDueDate(newDue.atStartOfDay());
             task.setStatus(TaskStatus.EXTENDED);
+            taskRepository.save(task);
         }
     }
     private void updateTaskStatusOnRejection(TaskRequest request, Task task) {
@@ -215,6 +315,7 @@ public class TaskRequestServiceImpl implements ITaskRequestService {
             default:
                 break;
         }
+        taskRepository.save(task);
     }
     
 
