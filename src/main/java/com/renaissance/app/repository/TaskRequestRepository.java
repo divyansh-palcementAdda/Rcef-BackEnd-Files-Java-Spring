@@ -18,4 +18,6 @@ public interface TaskRequestRepository extends JpaRepository<TaskRequest, Long> 
 	List<TaskRequest> findByRequestType(RequestType type);
 
 	List<TaskRequest> findByStatus(RequestStatus status);
+
+//	boolean existsByTask_TaskIdAndRequester_UserIdAndStatus(Long taskId, Long requesterId, RequestStatus pending);
 }

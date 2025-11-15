@@ -5,7 +5,6 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,120 +12,237 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.renaissance.app.exception.AccessDeniedException;
+import com.renaissance.app.exception.AuthenticationFailedException;
+import com.renaissance.app.payload.ApiResult;
 import com.renaissance.app.payload.JwtResponse;
 import com.renaissance.app.payload.LoginRequest;
 import com.renaissance.app.payload.UserDTO;
 import com.renaissance.app.payload.UserRequest;
 import com.renaissance.app.service.interfaces.IAuthService;
 
-import jakarta.mail.AuthenticationFailedException;
-import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * REST API for Authentication
+ * - Uses ApiResult<T> for standardized responses
+ */
+@Slf4j
 @RestController
 @RequestMapping("/api/auth")
-//@CrossOrigin(origins = {"http://localhost:4200"}, allowCredentials = "true")
 @RequiredArgsConstructor
-@Slf4j
+@CrossOrigin(origins = {"http://localhost:4200"}, allowCredentials = "true")
 public class AuthController {
 
     private final IAuthService authService;
 
+    /* --------------------------------------------------------------------- */
+    /* LOGIN */
+    /* --------------------------------------------------------------------- */
     @PostMapping("/login")
-    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest loginRequest) {
-        try {
-            JwtResponse jwtResponse = authService.login(loginRequest);
-            return ResponseEntity.ok(jwtResponse);
+    public ResponseEntity<ApiResult<JwtResponse>> login(
+            @Valid @RequestBody LoginRequest loginRequest,
+            HttpServletRequest httpRequest) {
 
-        } catch (AuthenticationFailedException ex) {
-            log.warn("⚠️ Login failed: {}", ex.getMessage());
+        try {
+            JwtResponse jwtResponse = authService.login(loginRequest, httpRequest);
+            log.info("LOGIN SUCCESS | User: {}", loginRequest.getEmailOrUsername());
+
+            return ResponseEntity.ok(
+                    ApiResult.ok(jwtResponse, "Login successful")
+            );
+
+        } catch (AuthenticationFailedException e) {
+            log.warn("LOGIN FAILED | Invalid credentials: {}", loginRequest.getEmailOrUsername());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("success", false, "message", ex.getMessage()));
+                    .body(ApiResult.error("Invalid email/username or password", HttpStatus.UNAUTHORIZED));
 
-        } catch (AccessDeniedException ex) {
-            log.warn("🚫 Login blocked: {}", ex.getMessage());
+        } catch (AccessDeniedException e) {
+            log.warn("LOGIN BLOCKED | {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("success", false, "message", ex.getMessage()));
+                    .body(ApiResult.error(e.getMessage(), HttpStatus.FORBIDDEN));
 
-        } catch (Exception ex) {
-            log.error("❌ Unexpected login error", ex);
+        } catch (Exception e) {
+            log.error("LOGIN ERROR | Unexpected failure", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("success", false, "message", "Login failed due to server error."));
+                    .body(ApiResult.error("Login failed. Please try again later.", HttpStatus.INTERNAL_SERVER_ERROR));
         }
     }
-    
+
+    /* --------------------------------------------------------------------- */
+    /* REFRESH TOKEN */
+    /* --------------------------------------------------------------------- */
     @PostMapping("/refresh-token")
-    public ResponseEntity<?> refreshAccessToken(@RequestBody Map<String, String> request) {
+    public ResponseEntity<ApiResult<JwtResponse>> refreshToken(@RequestBody Map<String, String> payload) {
+        String refreshToken = payload.get("refreshToken");
+
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResult.error("refreshToken is required", HttpStatus.BAD_REQUEST));
+        }
+
         try {
-            String refreshToken = request.get("refreshToken");
-            System.err.println("Refrishing token :- "+refreshToken);
             JwtResponse jwtResponse = authService.refreshAccessToken(refreshToken);
-            System.err.println("jwt response :- "+jwtResponse);
-            return ResponseEntity.ok(jwtResponse);
+            log.info("TOKEN REFRESHED | Success");
 
-        } catch (AccessDeniedException ex) {
-            log.warn("🚫 Refresh token invalid: {}", ex.getMessage());
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                    .body(Map.of("success", false, "message", ex.getMessage()));
+            return ResponseEntity.ok(
+                    ApiResult.ok(jwtResponse, "Token refreshed successfully")
+            );
 
-        } catch (Exception ex) {
-            log.error("❌ Unexpected error during token refresh", ex);
+        } catch (AccessDeniedException e) {
+            log.warn("TOKEN REFRESH FAILED | Invalid/expired token");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResult.error("Invalid or expired refresh token", HttpStatus.UNAUTHORIZED));
+
+        } catch (Exception e) {
+            log.error("TOKEN REFRESH ERROR", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("success", false, "message", "Failed to refresh token."));
+                    .body(ApiResult.error("Failed to refresh token", HttpStatus.INTERNAL_SERVER_ERROR));
         }
     }
-    
-//    @DeleteMapping("/logout")
-//    public ResponseEntity<?> removeRefreshTokenOnLogout(){
-//    	
-//    }
 
+    /* --------------------------------------------------------------------- */
+    /* LOGOUT (Per Device) */
+    /* --------------------------------------------------------------------- */
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResult<Void>> logout(@RequestBody Map<String, String> payload) {
+        String refreshToken = payload.get("refreshToken");
 
-    @PostMapping("/register")
-    public ResponseEntity<?> register(@Valid @RequestBody UserRequest userRequest) {
+        if (refreshToken == null || refreshToken.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResult.error("refreshToken is required", HttpStatus.BAD_REQUEST));
+        }
+
         try {
-            UserDTO created = authService.register(userRequest);
-            return ResponseEntity.status(HttpStatus.CREATED).body(created);
-        } catch (IllegalArgumentException ex) {
-            log.warn("Registration failed: {}", ex.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
-        } catch (Exception ex) {
-            log.error("Unexpected registration error", ex);
+            authService.logout(refreshToken);
+            log.info("LOGOUT SUCCESS | Session terminated");
+            return ResponseEntity.ok(
+                    ApiResult.ok(null, "Logged out successfully")
+            );
+
+        } catch (Exception e) {
+            log.error("LOGOUT ERROR", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Registration failed"));
+                    .body(ApiResult.error("Logout failed", HttpStatus.INTERNAL_SERVER_ERROR));
         }
     }
 
+    /* --------------------------------------------------------------------- */
+    /* GLOBAL LOGOUT (All Devices) */
+    /* --------------------------------------------------------------------- */
+    @PostMapping("/logout-all")
+    public ResponseEntity<ApiResult<Void>> logoutAll(@RequestBody Map<String, Long> payload) {
+        Long userId = payload.get("userId");
+
+        if (userId == null) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResult.error("userId is required", HttpStatus.BAD_REQUEST));
+        }
+
+        try {
+            authService.logoutAll(userId);
+            log.info("GLOBAL LOGOUT | All sessions revoked for userId={}", userId);
+            return ResponseEntity.ok(
+                    ApiResult.ok(null, "All sessions logged out successfully")
+            );
+
+        } catch (Exception e) {
+            log.error("GLOBAL LOGOUT ERROR", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResult.error("Global logout failed", HttpStatus.INTERNAL_SERVER_ERROR));
+        }
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* REGISTER */
+    /* --------------------------------------------------------------------- */
+    @PostMapping("/register")
+    public ResponseEntity<ApiResult<UserDTO>> register(@Valid @RequestBody UserRequest userRequest) {
+        try {
+            UserDTO user = authService.register(userRequest);
+            log.info("REGISTER SUCCESS | User: {}", user.getEmail());
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResult.ok(user, "User registered. OTP sent to email."));
+
+        } catch (IllegalArgumentException e) {
+            log.warn("REGISTER FAILED | Validation: {}", e.getMessage());
+            return ResponseEntity.badRequest()
+                    .body(ApiResult.error(e.getMessage(), HttpStatus.BAD_REQUEST));
+
+        } catch (Exception e) {
+            log.error("REGISTER ERROR", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResult.error("Registration failed", HttpStatus.INTERNAL_SERVER_ERROR));
+        }
+    }
+
+    /* --------------------------------------------------------------------- */
+    /* SEND OTP */
+    /* --------------------------------------------------------------------- */
     @PostMapping("/send-otp")
-    public ResponseEntity<?> sendOtp(@RequestParam String email) {
+    public ResponseEntity<ApiResult<Void>> sendOtp(@RequestParam String email) {
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResult.error("Email is required", HttpStatus.BAD_REQUEST));
+        }
+
         try {
             authService.sendVerificationOtp(email);
-            return ResponseEntity.ok(Map.of("message", "OTP sent successfully"));
-        } catch (Exception ex) {
-            log.warn("Send OTP failed: {}", ex.getMessage());
-            return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
+            log.info("OTP SENT | Email: {}", email);
+            return ResponseEntity.ok(
+                    ApiResult.ok(null, "OTP sent successfully to " + email)
+            );
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResult.error(e.getMessage(), HttpStatus.BAD_REQUEST));
+
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResult.error(e.getMessage(), HttpStatus.FORBIDDEN));
+
+        } catch (Exception e) {
+            log.error("OTP SEND ERROR", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(ApiResult.error("Failed to send OTP", HttpStatus.INTERNAL_SERVER_ERROR));
         }
     }
 
+    /* --------------------------------------------------------------------- */
+    /* VERIFY OTP */
+    /* --------------------------------------------------------------------- */
     @PostMapping("/verify-otp")
-    public ResponseEntity<?> verifyOtp(@RequestParam String email, @RequestParam String otp) {
+    public ResponseEntity<ApiResult<Void>> verifyOtp(
+            @RequestParam String email,
+            @RequestParam String otp) {
+
+        if (email == null || email.isBlank() || otp == null || otp.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResult.error("Email and OTP are required", HttpStatus.BAD_REQUEST));
+        }
+
         try {
-            boolean ok = authService.verifyOtpAndActivate(email, otp);
-            if (ok) {
-                return ResponseEntity.ok(Map.of("message", "Email verified successfully"));
+            boolean verified = authService.verifyOtpAndActivate(email, otp);
+            if (verified) {
+                log.info("OTP VERIFIED | Email: {}", email);
+                return ResponseEntity.ok(
+                        ApiResult.ok(null, "Email verified successfully")
+                );
             } else {
-                return ResponseEntity.badRequest().body(Map.of("message", "Invalid or expired OTP"));
+                return ResponseEntity.badRequest()
+                        .body(ApiResult.error("Invalid or expired OTP", HttpStatus.BAD_REQUEST));
             }
-        } catch (AccessDeniedException ex) {
-            log.warn("OTP verification failed: {}", ex.getMessage());
-            return ResponseEntity.status(HttpServletResponse.SC_UNAUTHORIZED)
-                    .body(Map.of("message", ex.getMessage()));
-        } catch (Exception ex) {
-            log.error("Unexpected OTP verification error", ex);
+
+        } catch (AccessDeniedException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResult.error(e.getMessage(), HttpStatus.FORBIDDEN));
+
+        } catch (Exception e) {
+            log.error("OTP VERIFY ERROR", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "OTP verification failed"));
+                    .body(ApiResult.error("OTP verification failed", HttpStatus.INTERNAL_SERVER_ERROR));
         }
     }
 }

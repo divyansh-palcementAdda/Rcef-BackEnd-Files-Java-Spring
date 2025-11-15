@@ -1,35 +1,41 @@
 package com.renaissance.app.service.impl;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.renaissance.app.exception.AccessDeniedException;
+import com.renaissance.app.exception.BadRequestException;
 import com.renaissance.app.exception.ResourcesNotFoundException;
 import com.renaissance.app.mapper.UserMapper;
 import com.renaissance.app.model.Department;
 import com.renaissance.app.model.Role;
-import com.renaissance.app.model.TaskStatus;
 import com.renaissance.app.model.User;
 import com.renaissance.app.model.UserStatus;
+import com.renaissance.app.payload.NotificationEvent;
 import com.renaissance.app.payload.UserDTO;
 import com.renaissance.app.payload.UserRequest;
 import com.renaissance.app.repository.DepartmentRepository;
 import com.renaissance.app.repository.IUserRepository;
 import com.renaissance.app.repository.TaskRepository;
 import com.renaissance.app.security.UserSecurityUtil;
+import com.renaissance.app.service.interfaces.IEmailService;
 import com.renaissance.app.service.interfaces.IUserService;
 
+import jakarta.mail.MessagingException;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
+@RequiredArgsConstructor
 @Transactional
 @Slf4j
 public class UserServiceImpl implements IUserService {
@@ -39,262 +45,225 @@ public class UserServiceImpl implements IUserService {
     private final PasswordEncoder passwordEncoder;
     private final UserSecurityUtil securityUtil;
     private final UserMapper userMapper;
-    private final TaskRepository taskRepository;
+    private final KafkaTemplate<String, NotificationEvent> kafkaTemplate;
+    private final IEmailService emailService;
+	private final TaskRepository taskRepository;
 
-    public UserServiceImpl(IUserRepository userRepository,
-                           DepartmentRepository departmentRepository,
-                           PasswordEncoder passwordEncoder,
-                           UserSecurityUtil securityUtil,
-                           UserMapper userMapper,
-                           TaskRepository taskRepository) {
-        this.userRepository = userRepository;
-        this.departmentRepository = departmentRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.securityUtil = securityUtil;
-        this.userMapper = userMapper;
-        this.taskRepository = taskRepository;
-    }
-
-    // ============================================================
-    // UPDATE USER
-    // ============================================================
     @Override
     @PreAuthorize("hasAnyRole('ADMIN','HOD')")
-    public UserDTO updateUser(Long userId, UserRequest request) throws AccessDeniedException {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
-        if (request == null) throw new IllegalArgumentException("User request is required");
+    public UserDTO updateUser(Long userId, UserRequest request) throws AccessDeniedException, BadRequestException, ResourcesNotFoundException {
+        if (userId == null) throw new BadRequestException("User ID is required");
+        if (request == null) throw new BadRequestException("Update request is required");
 
-        User existing = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourcesNotFoundException("User not found: " + userId));
 
-        if (!canAccessUser(userId)) {
-            throw new AccessDeniedException("You are not authorized to update this user");
+        User updater = getCurrentUser();
+        if (!canAccessUser(targetUser, updater)) {
+            throw new AccessDeniedException("Not authorized to update this user");
         }
 
-        // Basic fields
-        if (request.getFullName() != null && !request.getFullName().isBlank())
-            existing.setFullName(request.getFullName().trim());
-        if (request.getUsername() != null && !request.getUsername().isBlank())
-            existing.setUsername(request.getUsername().trim());
-        if (request.getEmail() != null && !request.getEmail().isBlank())
-            existing.setEmail(request.getEmail().trim());
-        if (request.getPassword() != null && !request.getPassword().isBlank())
-            existing.setPassword(passwordEncoder.encode(request.getPassword()));
-
-        // =============================
-        // ROLE update (Admins only)
-        // =============================
-        if (request.getRole() != null) {
-            if (!securityUtil.hasAdminRole()) {
-                throw new AccessDeniedException("Only admin can change user roles");
+        if (request.getUsername() != null && !request.getUsername().equals(targetUser.getUsername())) {
+            if (userRepository.existsByUsername(request.getUsername())) {
+                throw new BadRequestException("Username already exists");
             }
-            existing.setRole(request.getRole());
+            targetUser.setUsername(request.getUsername());
         }
 
-        // =============================
-        // DEPARTMENT(S) update
-        // =============================
+        if (request.getEmail() != null && !request.getEmail().equals(targetUser.getEmail())) {
+            if (userRepository.existsByEmail(request.getEmail())) {
+                throw new BadRequestException("Email already exists");
+            }
+            targetUser.setEmail(request.getEmail());
+            targetUser.setEmailVerified(false); // Require re-verification
+        }
+
+        if (request.getPassword() != null) {
+            targetUser.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
+
+        if (request.getRole() != null && request.getRole() != targetUser.getRole()) {
+            if (updater.getRole() != Role.ADMIN) {
+                throw new AccessDeniedException("Only Admin can change roles");
+            }
+            targetUser.setRole(request.getRole());
+        }
+
         if (request.getDepartmentIds() != null && !request.getDepartmentIds().isEmpty()) {
-            List<Department> departments = departmentRepository.findAllById(request.getDepartmentIds());
-            if (departments.size() != request.getDepartmentIds().size()) {
-                throw new RuntimeException("One or more departments not found");
-            }
+            Set<Department> newDepts = request.getDepartmentIds().stream()
+                .map(deptId -> {
+					try {
+						return departmentRepository.findById(deptId)
+						    .orElseThrow(() -> new ResourcesNotFoundException("Department not found with ID: " + deptId));
+					} catch (ResourcesNotFoundException e) {
+						e.printStackTrace();
+					}
+					return null;
+				})
+                .collect(Collectors.toSet());
 
-            // 🔒 If role = ADMIN → must only belong to Administration
-            if (existing.getRole() == Role.ADMIN) {
-                boolean valid = departments.stream()
-                        .anyMatch(d -> "Administration".equalsIgnoreCase(d.getName()));
-                if (!valid || departments.size() > 1) {
-                    throw new AccessDeniedException("Admin can only belong to the 'Administration' department");
-                }
-            }
-
-            existing.setDepartments(departments);
+            // Convert Set → List if User.setDepartments(List<Department>) is required
+            targetUser.setDepartments(new ArrayList<>(newDepts));
+        } else if (request.getDepartmentIds() != null) {
+            // Explicitly clear departments if empty list is sent
+            targetUser.setDepartments(new ArrayList<>());
         }
 
-        existing.setStatus(UserStatus.ACTIVE);
-        existing.setUpdatedAt(LocalDateTime.now());
-        User saved = userRepository.save(existing);
+        targetUser.setUpdatedAt(LocalDateTime.now());
+        User updated = userRepository.save(targetUser);
 
-        return userMapper.toDto(saved);
-    }
+        publishUserEvent("USER_UPDATED", updated, "User profile updated");
+        sendUserUpdateEmail(updated);
 
-    // ============================================================
-    // GET BY ID
-    // ============================================================
-    @Override
-    public UserDTO getUserById(Long userId) throws AccessDeniedException {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
-        if (!canAccessUser(userId)) throw new AccessDeniedException("Unauthorized");
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-
-        UserDTO dto = userMapper.toDto(user);
-        dto.setPendingTasks(taskRepository.countByAssignedUsers_UserIdAndStatus(userId, TaskStatus.PENDING));
-        dto.setUpcomingTasks(taskRepository.countByAssignedUsers_UserIdAndStatus(userId, TaskStatus.UPCOMING));
-        dto.setDelayedTasks(taskRepository.countByAssignedUsers_UserIdAndStatus(userId, TaskStatus.DELAYED));
-        dto.setClosedTasks(taskRepository.countByAssignedUsers_UserIdAndStatus(userId, TaskStatus.CLOSED));
-
-        return dto;
-    }
-
-    // ============================================================
-    // OTHER EXISTING METHODS (unchanged)
-    // ============================================================
-    @Override
-    public List<UserDTO> getUsersByIds(List<Long> ids) throws ResourcesNotFoundException {
-        List<User> users = userRepository.findAllById(ids);
-        if (users.isEmpty()) throw new ResourcesNotFoundException("No users found for given IDs");
-        return users.stream().map(userMapper::toDto).collect(Collectors.toList());
-    }
-
-    @Override
-    @PreAuthorize("hasRole('ADMIN')")
-    public void deleteUser(Long userId) {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        Long currentUserId = securityUtil.getCurrentUserId();
-
-        if (currentUserId != null && currentUserId.equals(user.getUserId())) {
-            throw new SecurityException("Cannot delete yourself");
-        }
-        if (user.getRole() == Role.ADMIN) {
-            throw new SecurityException("Cannot delete another admin");
-        }
-        if (user.getStatus() == UserStatus.INACTIVE) {
-            throw new IllegalArgumentException("User already inactive");
-        }
-
-        user.setStatus(UserStatus.INACTIVE);
-        user.setUpdatedAt(LocalDateTime.now());
-        userRepository.save(user);
-        log.info("User {} marked INACTIVE by {}", userId, currentUserId);
-    }
-
-    @Override
-    public UserDTO activeUserById(Long userId) {
-        if (userId == null) throw new IllegalArgumentException("userId is required");
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        Long currentUserId = securityUtil.getCurrentUserId();
-
-        if (currentUserId != null && currentUserId.equals(user.getUserId())) {
-            throw new SecurityException("Cannot activate yourself");
-        }
-        if (user.getStatus() == UserStatus.ACTIVE) {
-            throw new IllegalArgumentException("User already ACTIVE");
-        }
-
-        user.setStatus(UserStatus.ACTIVE);
-        user.setUpdatedAt(LocalDateTime.now());
-        User saved = userRepository.save(user);
-        log.info("User {} marked ACTIVE by {}", userId, currentUserId);
-
-        return userMapper.toDto(saved);
+        return userMapper.toDto(updated);
     }
 
     @Override
     @PreAuthorize("hasAnyRole('ADMIN','HOD')")
-    public List<UserDTO> getAllUsers() throws AccessDeniedException {
-//        if (!securityUtil.hasAdminRole()) throw new AccessDeniedException("Only admins allowed");
-        return userRepository.findAll().stream().map(userMapper::toDto).collect(Collectors.toList());
+    public void deleteUser(Long userId) throws AccessDeniedException, ResourcesNotFoundException, BadRequestException {
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourcesNotFoundException("User not found: " + userId));
+
+        User deleter = getCurrentUser();
+        if (!canAccessUser(targetUser, deleter)) {
+            throw new AccessDeniedException("Not authorized to delete this user");
+        }
+
+        if (taskRepository.existsByAssignedUsersContaining(targetUser)) {
+            throw new BadRequestException("Cannot delete user with active tasks");
+        }
+
+        targetUser.setStatus(UserStatus.INACTIVE);
+        userRepository.save(targetUser);
+
+        publishUserEvent("USER_DELETED", targetUser, "User marked inactive");
+        sendUserStatusEmail(targetUser, "Your account has been deactivated");
     }
 
     @Override
-    public List<UserDTO> getAllUserByRole(Role role) throws AccessDeniedException {
-        if (role == null) throw new IllegalArgumentException("role is required");
-        if (!(securityUtil.hasAdminRole() || securityUtil.hasHodRole())) {
-            throw new AccessDeniedException("Not allowed");
+    public UserDTO getUserById(Long userId) throws AccessDeniedException, ResourcesNotFoundException {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourcesNotFoundException("User not found: " + userId));
+
+        User viewer = getCurrentUser();
+        if (!canAccessUser(user, viewer)) {
+            throw new AccessDeniedException("Not authorized to view this user");
         }
 
-        List<User> users = userRepository.findByRole(role);
+        return userMapper.toDto(user);
+    }
 
-        // HOD filter to own department(s)
-        if (securityUtil.hasHodRole() && !securityUtil.hasAdminRole()) {
-            Long currentId = securityUtil.getCurrentUserId();
-            Set<Long> hodDeptIds = userRepository.findById(currentId)
-                    .map(u -> u.getDepartments().stream()
-                            .map(Department::getDepartmentId)
-                            .collect(Collectors.toSet()))
-                    .orElse(Set.of());
-            users = users.stream()
-                    .filter(u -> u.getDepartments().stream()
-                            .anyMatch(d -> hodDeptIds.contains(d.getDepartmentId())))
-                    .collect(Collectors.toList());
+    @Override
+    public List<UserDTO> getAllUsers() throws AccessDeniedException, ResourcesNotFoundException {
+        User current = getCurrentUser();
+        if (!current.getRole().equals(Role.ADMIN)) {
+            throw new AccessDeniedException("Only Admin can view all users");
         }
+        return userRepository.findAll().stream()
+                .map(userMapper::toDto)
+                .collect(Collectors.toList());
+    }
 
+    @Override
+    public List<UserDTO> getUsersByIds(List<Long> ids) throws ResourcesNotFoundException, BadRequestException {
+        if (ids == null || ids.isEmpty()) {
+            throw new BadRequestException("User IDs are required");
+        }
+        List<User> users = userRepository.findAllById(ids);
+        if (users.isEmpty()) {
+            throw new ResourcesNotFoundException("No users found for given IDs");
+        }
         return users.stream().map(userMapper::toDto).collect(Collectors.toList());
     }
 
     @Override
-    public List<UserDTO> getUsersByDepartment(Long departmentId) throws AccessDeniedException {
-        if (departmentId == null) throw new IllegalArgumentException("departmentId is required");
-
-        if (securityUtil.hasHodRole() && !securityUtil.hasAdminRole()) {
-            Long currentId = securityUtil.getCurrentUserId();
-            Set<Long> hodDeptIds = userRepository.findById(currentId)
-                    .map(u -> u.getDepartments().stream()
-                            .map(Department::getDepartmentId)
-                            .collect(Collectors.toSet()))
-                    .orElse(Set.of());
-
-            if (!hodDeptIds.contains(departmentId)) {
-                throw new AccessDeniedException("HOD can only view users in their own department");
-            }
-        } else if (!securityUtil.hasAdminRole() && !securityUtil.hasHodRole()) {
-            throw new AccessDeniedException("Not allowed");
+    public List<UserDTO> getAllUserByRole(Role role) throws AccessDeniedException, ResourcesNotFoundException {
+        User current = getCurrentUser();
+        if (!current.getRole().equals(Role.ADMIN) && !current.getRole().equals(Role.HOD)) {
+            throw new AccessDeniedException("Not authorized to view users by role");
         }
-
-        List<User> users = userRepository.findByDepartments_DepartmentId(departmentId);
-        return users.stream().map(userMapper::toDto).collect(Collectors.toList());
+        return userRepository.findByRole(role).stream()
+                .map(userMapper::toDto)
+                .collect(Collectors.toList());
     }
 
     @Override
-    public List<UserDTO> getAllUserByStatus(UserStatus status) {
-        if (status == null) throw new IllegalArgumentException("status is required");
+    public List<UserDTO> getUsersByDepartment(Long departmentId) throws AccessDeniedException, ResourcesNotFoundException {
+        Department dept = departmentRepository.findById(departmentId)
+                .orElseThrow(() -> new ResourcesNotFoundException("Department not found: " + departmentId));
+
+        User current = getCurrentUser();
+        if (current.getRole() == Role.HOD && !current.getDepartments().contains(dept)) {
+            throw new AccessDeniedException("HOD can only view users in their own department");
+        } else if (!current.getRole().equals(Role.ADMIN) && !current.getRole().equals(Role.HOD)) {
+            throw new AccessDeniedException("Not authorized");
+        }
+
+        return userRepository.findByDepartmentsContaining(dept).stream()
+                .map(userMapper::toDto)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<UserDTO> getAllUserByStatus(UserStatus status) throws BadRequestException {
+        if (status == null) throw new BadRequestException("Status is required");
         return userRepository.findByStatus(status).stream()
                 .map(userMapper::toDto)
                 .collect(Collectors.toList());
     }
 
     @Override
-    public void validateUser(String email) {
-        if (email == null || email.isBlank()) throw new IllegalArgumentException("email is required");
-        Optional<User> userOpt = userRepository.findByEmail(email);
-        if (userOpt.isPresent()) {
-            User user = userOpt.get();
-            user.setEmailVerified(true);
-            user.setVerificationToken(null);
-            user.setUpdatedAt(LocalDateTime.now());
-            userRepository.save(user);
-        } else {
-            throw new RuntimeException("User with email not found");
-        }
+    public void activeUserById(Long userId) throws ResourcesNotFoundException {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourcesNotFoundException("User not found: " + userId));
+        user.setStatus(UserStatus.ACTIVE);
+        userRepository.save(user);
+
+        publishUserEvent("USER_ACTIVATED", user, "User activated");
+        sendUserStatusEmail(user, "Your account has been activated");
     }
 
-    // ============================================================
-    // HELPER METHODS
-    // ============================================================
-    private boolean canAccessUser(Long targetUserId) {
+    private User getCurrentUser() throws ResourcesNotFoundException {
         Long currentId = securityUtil.getCurrentUserId();
-        if (currentId == null) return false;
-        if (currentId.equals(targetUserId) || securityUtil.hasAdminRole()) return true;
+        return userRepository.findById(currentId)
+                .orElseThrow(() -> new ResourcesNotFoundException("Current user not found"));
+    }
 
-        if (securityUtil.hasHodRole()) {
-            Set<Long> hodDeptIds = userRepository.findById(currentId)
-                    .map(u -> u.getDepartments().stream()
-                            .map(Department::getDepartmentId)
-                            .collect(Collectors.toSet()))
-                    .orElse(Set.of());
-            return userRepository.findById(targetUserId)
-                    .map(u -> u.getDepartments().stream()
-                            .anyMatch(d -> hodDeptIds.contains(d.getDepartmentId())))
-                    .orElse(false);
+    private boolean canAccessUser(User target, User current) {
+        if (current.getUserId().equals(target.getUserId()) || current.getRole() == Role.ADMIN) return true;
+
+        if (current.getRole() == Role.HOD) {
+            return target.getDepartments().stream()
+                    .anyMatch(dept -> current.getDepartments().contains(dept));
         }
         return false;
     }
+
+    private void publishUserEvent(String eventType, User user, String message) {
+        NotificationEvent event = new NotificationEvent();
+        event.setType(eventType);
+        event.setId(user.getUserId());
+        event.setMessage(message);
+        event.setTimestamp(LocalDateTime.now());
+
+        kafkaTemplate.send("user.events", user.getUserId().toString(), event); // Assume user.events topic
+    }
+
+    private void sendUserUpdateEmail(User user) {
+        try {
+            emailService.sendTaskUpdateEmail(user.getEmail(), "User Profile", "Your profile has been updated");
+        } catch (MessagingException e) {
+            log.error("Failed to send update email to {}", user.getEmail(), e);
+        }
+    }
+
+    private void sendUserStatusEmail(User user, String message) {
+        try {
+            emailService.sendTaskUpdateEmail(user.getEmail(), "Account Status", message);
+        } catch (MessagingException e) {
+            log.error("Failed to send status email to {}", user.getEmail(), e);
+        }
+    }
+
+	
 }

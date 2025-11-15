@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 
 import com.renaissance.app.exception.BadRequestException;
+import com.renaissance.app.exception.ResourcesNotFoundException;
 import com.renaissance.app.exception.UnauthorizedException;
 import com.renaissance.app.payload.ApproveRequestPayload;
 import com.renaissance.app.payload.TaskRequestDTO;
@@ -11,13 +12,13 @@ import com.renaissance.app.payload.TaskRequestMultipartPayload;
 
 public interface ITaskRequestService {
 
-	TaskRequestDTO approveRequest(ApproveRequestPayload payload, Long approverId) throws BadRequestException;
+	TaskRequestDTO approveRequest(ApproveRequestPayload payload, Long approverId) throws BadRequestException, ResourcesNotFoundException, UnauthorizedException;
 	
-	TaskRequestDTO rejectRequest(Long requestId, Long approverId, String reason) throws BadRequestException;
+	TaskRequestDTO rejectRequest(Long requestId, Long approverId, String reason) throws BadRequestException, ResourcesNotFoundException, UnauthorizedException;
 
-	List<TaskRequestDTO> getRequestsForTask(Long taskId);
+	List<TaskRequestDTO> getRequestsForTask(Long taskId) throws ResourcesNotFoundException;
 
 
 	TaskRequestDTO createRequestWithProofs(Long taskId, TaskRequestMultipartPayload payload, Long requesterId)
-			throws UnauthorizedException, IOException, BadRequestException;
+			throws UnauthorizedException, IOException, BadRequestException, ResourcesNotFoundException;
 }

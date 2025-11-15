@@ -62,4 +62,8 @@ public interface IUserRepository extends JpaRepository<User, Long> {
 
     @Query("select u.userId from User u join u.departments d where d.departmentId = :deptId and u.role = 'HOD'")
     List<Long> findHodIdsByDepartment(@Param("deptId") Long deptId);
+
+	boolean existsByDepartmentsContainingAndRole(Department dept, Role hod);
+
+	Optional<User> findByDepartmentsContaining(Department dept);
 }

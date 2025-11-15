@@ -3,7 +3,6 @@ package com.renaissance.app.service.impl;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.security.Principal;
 import java.util.Collections;
 
 import org.springframework.beans.factory.annotation.Value;

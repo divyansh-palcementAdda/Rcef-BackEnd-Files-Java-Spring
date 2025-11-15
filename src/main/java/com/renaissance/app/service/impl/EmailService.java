@@ -148,4 +148,17 @@ public class EmailService implements IEmailService {
         if (s == null) return "";
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
+
+	@Override
+	public void sendTaskApprovalEmail(String toEmail, String taskName, boolean approved, String reason)
+			throws MessagingException {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void sendTaskUpdateEmail(String toEmail, String taskName, String updateDetails) throws MessagingException {
+		// TODO Auto-generated method stub
+		
+	}
 }

@@ -4,6 +4,7 @@ package com.renaissance.app.service.interfaces;
 import java.nio.file.Path;
 import java.security.Principal;
 
+import com.renaissance.app.exception.BadRequestException;
 import com.renaissance.app.payload.OrgDriveResult;
 
 public interface IOrgDriveService {
@@ -14,7 +15,8 @@ public interface IOrgDriveService {
      * @param requestId Optional request identifier (for metadata)
      * @param principal Authenticated user (can be null for system)
      * @return OrgDriveResult containing success flag, drive file ID, and web link
+     * @throws BadRequestException 
      */
-    OrgDriveResult pushFile(Path tmpFile, Long requestId);
+    OrgDriveResult pushFile(Path tmpFile, Long requestId) throws BadRequestException;
 }
 

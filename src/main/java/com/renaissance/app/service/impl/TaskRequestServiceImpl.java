@@ -194,9 +194,12 @@ public class TaskRequestServiceImpl implements ITaskRequestService {
                 task.getTaskId(), task.getStatus());
 
         try {
+        	
             TaskRequest savedReq = taskRequestRepository.save(request);
             Task savedTask = taskRepository.save(task);
             log.info("[approveRequest] saved requestId={} taskId={}", savedReq.getRequestId(), savedTask.getTaskId());
+//            System.err.println(savedReq);
+//            System.err.println(savedTask);
         } catch (DataIntegrityViolationException dive) {
             log.error("[approveRequest] Data integrity violation while saving request/task", dive);
             throw new BadRequestException("Database constraint violated while approving request: " + getRootCauseMessage(dive));

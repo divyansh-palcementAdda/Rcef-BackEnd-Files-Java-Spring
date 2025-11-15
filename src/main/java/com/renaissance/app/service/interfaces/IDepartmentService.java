@@ -17,7 +17,7 @@ public interface IDepartmentService {
 
 	List<DepartmentDTO> getAllDepartments();
 
-	List<DepartmentDTO> getDepartmentsByIds(List<Long> ids) throws ResourcesNotFoundException;
+	List<DepartmentDTO> getDepartmentsByIds(List<Long> ids) throws ResourcesNotFoundException, BadRequestException;
 
 
 }

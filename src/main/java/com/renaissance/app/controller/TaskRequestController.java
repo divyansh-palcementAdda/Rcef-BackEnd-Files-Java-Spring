@@ -121,7 +121,6 @@ public class TaskRequestController {
 		try {
 			approverId = jwtService.getUserIdFromAuthentication();
 		} catch (ResourcesNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
         if (approverId == null) {
@@ -133,9 +132,13 @@ public class TaskRequestController {
             TaskRequestDTO dto = taskRequestService.approveRequest(payload, approverId);
             return ResponseEntity.ok(ApiResult.ok(dto, "Request approved successfully"));
         } catch (IllegalArgumentException e) {
+        	System.err.println(e);
+			e.printStackTrace();
             return ResponseEntity.badRequest()
                     .body(ApiResult.error(e.getMessage(), HttpStatus.BAD_REQUEST));
         } catch (Exception e) {
+        	System.err.println(e);
+			e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResult.error("Approval failed: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR));
         }
@@ -157,7 +160,6 @@ public class TaskRequestController {
 		try {
 			approverId = jwtService.getUserIdFromAuthentication();
 		} catch (ResourcesNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
         if (approverId == null) {
@@ -169,9 +171,11 @@ public class TaskRequestController {
             TaskRequestDTO dto = taskRequestService.rejectRequest(requestId, approverId, payload.getReason());
             return ResponseEntity.ok(ApiResult.ok(dto, "Request rejected"));
         } catch (IllegalArgumentException e) {
+        	System.err.println(e);
             return ResponseEntity.badRequest()
                     .body(ApiResult.error(e.getMessage(), HttpStatus.BAD_REQUEST));
         } catch (Exception e) {
+        	System.err.println(e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(ApiResult.error("Rejection failed: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR));
         }

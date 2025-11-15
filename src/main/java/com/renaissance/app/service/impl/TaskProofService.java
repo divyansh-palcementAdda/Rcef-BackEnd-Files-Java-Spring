@@ -4,7 +4,6 @@ package com.renaissance.app.service.impl;
 import java.io.IOException;
 import java.time.LocalDateTime;
 
-import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;

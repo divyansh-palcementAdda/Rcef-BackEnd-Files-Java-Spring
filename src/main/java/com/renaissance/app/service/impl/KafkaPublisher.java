@@ -1,14 +1,15 @@
 // src/main/java/com/renaissance/app/service/impl/KafkaPublisher.java
 package com.renaissance.app.service.impl;
 
-import com.renaissance.app.model.Task;
-import com.renaissance.app.payload.TaskEventDto;
-import com.renaissance.app.payload.NotificationEvent;
-import lombok.RequiredArgsConstructor;
+import java.time.LocalDateTime;
+
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime;
+import com.renaissance.app.model.Task;
+import com.renaissance.app.payload.NotificationEvent;
+
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor

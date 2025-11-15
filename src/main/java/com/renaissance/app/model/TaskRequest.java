@@ -55,7 +55,7 @@ public class TaskRequest {
 
     // ==================== PROOFS ====================
     @OneToMany(mappedBy = "taskRequest", cascade = CascadeType.ALL, orphanRemoval = true)
-    @Size(min = 1, message = "At least one proof is required for the task request")
+//    @Size(min = 1, message = "At least one proof is required for the task request")
     private List<TaskProof> proofs = new ArrayList<>();
 
 }

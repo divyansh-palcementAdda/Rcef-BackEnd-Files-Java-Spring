@@ -9,6 +9,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+import com.renaissance.app.model.Department;
 import com.renaissance.app.model.Task;
 import com.renaissance.app.model.TaskStatus;
 import com.renaissance.app.model.User;
@@ -65,5 +66,11 @@ public interface TaskRepository extends JpaRepository<Task, Long> {
 	List<Task> findByDueDateBeforeAndStatusNot(LocalDate date, TaskStatus status);
 
 	List<Task> findByRequiresApprovalTrueAndApprovedFalse();
+
+	Optional<User> findByDepartmentsContaining(Department dept);
+
+	Optional<User> findByAssignedUsersContaining(User user);
+
+	boolean existsByAssignedUsersContaining(User targetUser);
 
 }

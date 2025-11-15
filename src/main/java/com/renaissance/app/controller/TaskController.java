@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.RestController;
 import com.renaissance.app.exception.BadRequestException;
 import com.renaissance.app.exception.ResourcesNotFoundException;
 import com.renaissance.app.exception.UnauthorizedException;
-import com.renaissance.app.model.Task;
 import com.renaissance.app.model.TaskStatus;
 import com.renaissance.app.payload.ApiResult;
 import com.renaissance.app.payload.TaskDTO;
@@ -77,13 +76,10 @@ public class TaskController {
 		try {
 			task = taskService.startTask(taskId, jwtService.getUserIdFromAuthentication());
 		} catch (ResourcesNotFoundException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} catch (BadRequestException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} catch (UnauthorizedException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
         return ResponseEntity.ok(ApiResult.ok(task, "Task started"));
@@ -105,6 +101,8 @@ public class TaskController {
 		try {
 			tasks = taskService.getTasksByDepartment(deptId);
 		} catch (BadRequestException e) {
+			e.printStackTrace();
+		} catch (ResourcesNotFoundException e) {
 			e.printStackTrace();
 		}
         return ResponseEntity.ok(ApiResult.ok(tasks,
