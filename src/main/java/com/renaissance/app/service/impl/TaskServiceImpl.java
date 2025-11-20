@@ -421,49 +421,64 @@ public class TaskServiceImpl implements ITaskService {
 	    LocalDateTime now = LocalDateTime.now();
 	    LocalDate today = now.toLocalDate();
 
-	    // === START DATE ===
-	    LocalDateTime start = Optional.ofNullable(payload.getStartDate())
-	            .orElse(now);
+	    // === SET DEFAULT TIME TO 00:00:00 (MIDNIGHT) ===
+	    LocalDateTime startDate = Optional.ofNullable(payload.getStartDate())
+	            .map(date -> date.withHour(0).withMinute(0).withSecond(0).withNano(0))
+	            .orElse(now.withHour(0).withMinute(0).withSecond(0).withNano(0)); // default to today 00:00
 
-	    if (start.toLocalDate().getDayOfWeek() == DayOfWeek.SUNDAY) {
+	    LocalDateTime dueDate = Optional.ofNullable(payload.getDueDate())
+	            .map(date -> date.withHour(0).withMinute(0).withSecond(0).withNano(0))
+	            .orElseThrow(() -> new BadRequestException("Due date is required"));
+
+	    LocalDate startLocalDate = startDate.toLocalDate();
+	    LocalDate dueLocalDate = dueDate.toLocalDate();
+
+	    // === VALIDATION: No Sundays allowed ===
+	    if (startLocalDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
 	        throw new BadRequestException("Start date cannot be on Sunday");
 	    }
 
-	    if (start.toLocalDate().isBefore(today)) {
-	        throw new BadRequestException("Start date cannot be in the past");
-	    }
-
-	    // === DUE DATE ===
-	    LocalDateTime due = Optional.ofNullable(payload.getDueDate())
-	            .orElseThrow(() -> new BadRequestException("Due date is required"));
-
-	    if (due.toLocalDate().getDayOfWeek() == DayOfWeek.SUNDAY) {
+	    if (dueLocalDate.getDayOfWeek() == DayOfWeek.SUNDAY) {
 	        throw new BadRequestException("Due date cannot be on Sunday");
 	    }
 
-	    if (due.isBefore(start)) {
-	        throw new BadRequestException("Due date must be on or after start date");
+	    // === PAST DATE CHECKS (Today is allowed) ===
+	    if (startLocalDate.isBefore(today)) {
+	        throw new BadRequestException("Start date cannot be in the past");
 	    }
 
-	    TaskStatus status = payload.getStatus();
+	    if (dueLocalDate.isBefore(today)) {
+	        throw new BadRequestException("Due date cannot be in the past");
+	    }
 
+	    // === DUE DATE must be on or after START DATE ===
+	    if (dueDate.isBefore(startDate)) {
+	        throw new BadRequestException("Due date must be on or after the start date");
+	    }
+
+	    // === STATUS-SPECIFIC RULES ===
+	    TaskStatus status = payload.getStatus();
 	    if (status != null) {
 	        switch (status) {
 	            case PENDING:
-	                if (due.toLocalDate().isBefore(today)) {
-	                    throw new BadRequestException("For PENDING status, due date cannot be in the past");
-	                }
+	                // Due date can be today or in future → already validated above
+	                // No extra restriction needed if today is allowed
 	                break;
 
 	            case UPCOMING:
-	                if (!start.toLocalDate().isAfter(today)) {
+	                // Start date must be strictly in the future (not today)
+	                if (!startLocalDate.isAfter(today)) {
 	                    throw new BadRequestException("For UPCOMING status, start date must be in the future (not today)");
 	                }
 	                break;
 	            default:
-	                throw new BadRequestException("Invalid status: " + status);
+	                throw new BadRequestException("Invalid task status: " + status);
 	        }
 	    }
+
+	    // Optionally: Reassign normalized dates back (if you want to clean input)
+	    payload.setStartDate(startDate);
+	    payload.setDueDate(dueDate);
 	}
 
 	private void enforceHodDepartmentConstraint(User creator, Set<Department> departments) throws BadRequestException {
