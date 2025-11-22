@@ -621,7 +621,7 @@ public class TaskServiceImpl implements ITaskService {
 	    try {
 	        auditLogRepository.save(log);
 	    } catch (Exception e) {
-	    	log.info("Failed to save audit log: {}", e.getMessage()); 
+//	    	log.info("Failed to save audit log: {}", e.getMessage()); 
 	        // Don't fail the main transaction
 	    }
 	}

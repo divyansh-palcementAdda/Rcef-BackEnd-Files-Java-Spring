@@ -14,7 +14,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "http://localhost:4200",
                         "http://192.168.0.183:4200",
                         "http://172.29.176.1:4200",
-                        "https://rcef-frontend.com"  // Replace with your real domain
+                        "https://areyoureporting.com"  // Replace with your real domain
                 )
                 .allowedMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
                 .allowedHeaders("*")

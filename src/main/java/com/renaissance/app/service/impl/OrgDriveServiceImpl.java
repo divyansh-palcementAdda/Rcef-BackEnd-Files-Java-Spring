@@ -2,10 +2,12 @@ package com.renaissance.app.service.impl;
 
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Collections;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport;
@@ -29,9 +31,18 @@ public class OrgDriveServiceImpl implements IOrgDriveService {
     private String driveFolderId;
 
     public OrgDriveServiceImpl(@Value("${gdrive.credentials.path}") String credentialsPath) throws Exception {
-        GoogleCredentials credentials = ServiceAccountCredentials
-                .fromStream(new FileInputStream(credentialsPath))
-                .createScoped(Collections.singleton(DriveScopes.DRIVE));
+    	InputStream inputStream;
+
+    	if (credentialsPath.startsWith("classpath:")) {
+    	    String fileName = credentialsPath.replace("classpath:", "");
+    	    inputStream = new ClassPathResource(fileName).getInputStream();
+    	} else {
+    	    inputStream = new FileInputStream(credentialsPath);
+    	}
+
+    	GoogleCredentials credentials = ServiceAccountCredentials
+    	        .fromStream(inputStream)
+    	        .createScoped(Collections.singleton(DriveScopes.DRIVE));
 
         this.driveService = new Drive.Builder(
                 GoogleNetHttpTransport.newTrustedTransport(),
